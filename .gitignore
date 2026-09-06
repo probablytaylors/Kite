@@ -1,0 +1,16 @@
+# CMake build trees
+/build/
+/out/
+/cmake-build-*/
+
+# Visual Studio and VS Code local files
+.vs/
+*.suo
+*.user
+.vscode/*.log
+
+# Build products
+*.obj
+*.pdb
+*.ilk
+*.exe
