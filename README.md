@@ -4,9 +4,10 @@ Kite is a programming language built from scratch in C++.
 
 ## Current Status
 
-The lexer, parser, AST, and a small interpreter are implemented. Kite can read
-a source file, evaluate numeric and boolean values, perform basic arithmetic
-and comparisons, store `let` bindings, and use `if`/`else` with `print`.
+The lexer, parser, AST, semantic analyzer, interpreter, and initial bytecode VM
+are implemented. Kite can read source files, validate types, evaluate numeric
+and boolean values, mutate arrays, perform arithmetic and comparisons, and use
+control flow, functions, file I/O, and standard-library helpers.
 
 ## Project Structure
 
@@ -65,7 +66,7 @@ CTest runs lexer, parser, interpreter, bytecode, and standard-library tests.
 
 ## CMake Targets
 
-- `kite_core`: static library containing the lexer, parser, AST, interpreter, and bytecode VM.
+- `kite_core`: static library containing the lexer, parser, AST, semantic analyzer, interpreter, and bytecode VM.
 - `kite`: command-line Kite interpreter.
 - `kite --bytecode`: bytecode compiler and stack VM mode.
 - `kite_lexer_tests`: lexer behavior tests.
@@ -73,6 +74,7 @@ CTest runs lexer, parser, interpreter, bytecode, and standard-library tests.
 - `kite_interpreter_tests`: interpreter behavior tests.
 - `kite_bytecode_tests`: bytecode compiler and VM tests.
 - `kite_stdlib_tests`: source-level standard-library tests.
+- `kite_semantic_tests`: semantic-analysis tests.
 
 ## Development Roadmap
 
@@ -89,13 +91,15 @@ CTest runs lexer, parser, interpreter, bytecode, and standard-library tests.
 - [x] Variable assignment and string concatenation
 - [x] Boolean logic with short-circuit evaluation
 - [x] Basic file read/write built-ins
+- [x] Semantic analysis and richer type checking
+- [x] Runtime type inspection and mutable array operations
 - [x] Initial bytecode compiler and stack VM
 - [x] Initial standard math functions
+- [x] Expanded math functions
 - [x] Initial source-level standard library modules
-- [ ] Semantic analysis and richer type checking
-- [ ] Runtime services and type system
-- [ ] Expanded standard library and advanced mathematics
-- [ ] Collections and modules
+- [ ] Richer static inference and user-defined types
+- [ ] Maps mutation and collection methods
+- [ ] Modules and imports
 - [ ] Full bytecode support for control flow, functions, and collections
 - [ ] Tooling such as a REPL, formatter, debugger, and package manager
 

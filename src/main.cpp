@@ -6,6 +6,7 @@
 #include "kite/interpreter/interpreter.hpp"
 #include "kite/bytecode/bytecode.hpp"
 #include "kite/parser/parser.hpp"
+#include "kite/semantic/semantic.hpp"
 
 int main(int argc, char* argv[]) {
     bool use_bytecode = false;
@@ -33,6 +34,12 @@ int main(int argc, char* argv[]) {
         for (const auto& error : parser.errors()) {
             std::cerr << error << '\n';
         }
+        return 1;
+    }
+
+    kite::SemanticAnalyzer semantic_analyzer;
+    if (!semantic_analyzer.analyze(program)) {
+        for (const auto& error : semantic_analyzer.errors()) std::cerr << error << '\n';
         return 1;
     }
 

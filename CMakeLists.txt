@@ -10,6 +10,7 @@ add_library(kite_core STATIC
     src/lexer/lexer.cpp
     src/lexer/token.cpp
     src/parser/parser.cpp
+    src/semantic/semantic.cpp
 )
 
 target_compile_features(kite_core PUBLIC cxx_std_20)
@@ -46,16 +47,22 @@ if(BUILD_TESTING)
         tests/stdlib/stdlib_tests.cpp
     )
 
+    add_executable(kite_semantic_tests
+        tests/semantic/semantic_tests.cpp
+    )
+
     target_link_libraries(kite_lexer_tests PRIVATE kite_core)
     target_link_libraries(kite_parser_tests PRIVATE kite_core)
     target_link_libraries(kite_interpreter_tests PRIVATE kite_core)
     target_link_libraries(kite_bytecode_tests PRIVATE kite_core)
     target_link_libraries(kite_stdlib_tests PRIVATE kite_core)
     target_compile_definitions(kite_stdlib_tests PRIVATE KITE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+    target_link_libraries(kite_semantic_tests PRIVATE kite_core)
 
     add_test(NAME kite_lexer_tests COMMAND kite_lexer_tests)
     add_test(NAME kite_parser_tests COMMAND kite_parser_tests)
     add_test(NAME kite_interpreter_tests COMMAND kite_interpreter_tests)
     add_test(NAME kite_bytecode_tests COMMAND kite_bytecode_tests)
     add_test(NAME kite_stdlib_tests COMMAND kite_stdlib_tests)
+    add_test(NAME kite_semantic_tests COMMAND kite_semantic_tests)
 endif()

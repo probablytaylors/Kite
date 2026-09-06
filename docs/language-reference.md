@@ -113,6 +113,10 @@ while (count < 3) {
 
 Conditions must evaluate to booleans.
 
+Before execution, semantic analysis checks identifiers, assignment targets,
+condition types, collection index types, return placement, and concrete
+arithmetic operands.
+
 ## Functions
 
 ```kite
@@ -149,11 +153,24 @@ The interpreter provides these numeric functions:
 - `abs(value)`
 - `floor(value)`
 - `ceil(value)`
+- `exp(value)`
+- `asin(value)`
+- `acos(value)`
+- `atan(value)`
+- `atan2(y, x)`
+- `min(left, right)`
+- `max(left, right)`
 
 Math functions accept numeric values. `sqrt` and `log` require non-negative
 inputs. Invalid arguments and domain errors are reported at runtime.
 
 Modules and concurrency APIs are planned but not implemented yet.
+
+Runtime helpers include:
+
+- `type_of(value)`: returns `boolean`, `integer`, `float`, `string`, `array`, or `map`.
+- `append(array, value)`: mutates an array and returns it.
+- `pop(array)`: removes and returns the last array element.
 
 ## Standard Library
 

@@ -165,6 +165,12 @@ int main() {
     all_passed &= check(!runs_successfully("print(sqrt(-1))"), "math domain error");
     all_passed &= check(!runs_successfully("missing = 1"), "assignment unknown variable error");
     all_passed &= check(!runs_successfully("print(1 && true)"), "logical type error");
+    all_passed &= check(run_source("let values = [1] append(values, 2) print(values) print(pop(values)) print(values)",
+        "[1, 2]\n2\n[1]\n"), "mutable array operations");
+    all_passed &= check(run_source("print(type_of(1)) print(type_of([1])) print(type_of({\"x\": 1}))",
+        "integer\narray\nmap\n"), "runtime type inspection");
+    all_passed &= check(run_source("print(exp(0)) print(asin(0)) print(atan2(1, 1)) print(min(3, 2)) print(max(3, 2))",
+        "1\n0\n0.785398163397448\n2\n3\n"), "expanded math functions");
 
     {
         const std::filesystem::path path = std::filesystem::temp_directory_path() / "kite_runtime_test.txt";

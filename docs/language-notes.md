@@ -54,8 +54,9 @@ The interpreter currently supports:
 - Identifier lookup.
 - The built-in `print` function, with zero or more arguments.
 
-Unknown variables and functions produce runtime errors. Richer type checking
-and nested scope rules are not implemented yet.
+Unknown variables and functions produce runtime errors. Semantic analysis runs
+before execution and checks concrete identifiers, conditions, assignments, and
+operand types.
 
 Arithmetic operands must be numeric. Division by zero is a runtime error.
 Floating-point values can be combined with integers, and `/` produces a
@@ -108,13 +109,14 @@ let values = [10, 20, 30]
 print(values[1])
 ```
 
-Arrays can contain nested arrays. Maps, mutation, slicing, and collection
-methods are planned for later runtime work. Existing variables can be updated
-with assignment, and strings can be joined with `+`.
+Arrays can contain nested arrays and can be mutated with `append` and `pop`.
+Maps support read-only indexing. Existing variables can be updated with
+assignment, and strings can be joined with `+`.
 
 Maps use string keys and support read-only indexing. The built-ins `len`,
 `upper`, and `lower` provide basic collection and string operations. The
-`read_file` and `write_file` built-ins provide basic text file I/O.
+`read_file` and `write_file` built-ins provide basic text file I/O. The
+`type_of` built-in reports the runtime type of a value.
 
 The bytecode compiler currently covers literals, variables, assignment,
 arithmetic, comparisons, boolean logic, unary operators, string concatenation,
@@ -123,5 +125,6 @@ and `print`. Other syntax continues to use the tree-walking interpreter.
 ## Math
 
 The standard math functions currently available are `sqrt`, `pow`, `sin`,
-`cos`, `tan`, `log`, `abs`, `floor`, and `ceil`. They use the C++ standard
-library implementation and return numeric values.
+`cos`, `tan`, `log`, `abs`, `floor`, `ceil`, `exp`, `asin`, `acos`, `atan`,
+`atan2`, `min`, and `max`. They use the C++ standard library implementation
+and return numeric values.

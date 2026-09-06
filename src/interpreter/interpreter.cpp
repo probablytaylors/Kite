@@ -14,6 +14,10 @@ namespace kite {
 
 namespace {
 
+bool is_numeric(const Value& value) {
+    return std::holds_alternative<std::int64_t>(value) || std::holds_alternative<double>(value);
+}
+
 double numeric_value(const Value& value) {
     if (const auto* integer = std::get_if<std::int64_t>(&value)) {
         return static_cast<double>(*integer);
@@ -500,6 +504,57 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         return true;
     }
 
+    if (callee->name == "type_of") {
+        if (call.arguments.size() != 1) {
+            report_error("function 'type_of' expects one argument");
+            return false;
+        }
+        Value argument;
+        if (!evaluate(*call.arguments[0], argument)) return false;
+        if (std::holds_alternative<bool>(argument)) value = std::string("boolean");
+        else if (std::holds_alternative<std::int64_t>(argument)) value = std::string("integer");
+        else if (std::holds_alternative<double>(argument)) value = std::string("float");
+        else if (std::holds_alternative<std::string>(argument)) value = std::string("string");
+        else if (std::holds_alternative<std::shared_ptr<ArrayValue>>(argument)) value = std::string("array");
+        else value = std::string("map");
+        return true;
+    }
+
+    if (callee->name == "append") {
+        if (call.arguments.size() != 2) {
+            report_error("function 'append' expects two arguments");
+            return false;
+        }
+        Value target;
+        Value element;
+        if (!evaluate(*call.arguments[0], target) || !evaluate(*call.arguments[1], element)) return false;
+        const auto* array = std::get_if<std::shared_ptr<ArrayValue>>(&target);
+        if (array == nullptr) {
+            report_error("function 'append' requires an array");
+            return false;
+        }
+        (*array)->elements.push_back(std::move(element));
+        value = *array;
+        return true;
+    }
+
+    if (callee->name == "pop") {
+        if (call.arguments.size() != 1) {
+            report_error("function 'pop' expects one argument");
+            return false;
+        }
+        Value target;
+        if (!evaluate(*call.arguments[0], target)) return false;
+        const auto* array = std::get_if<std::shared_ptr<ArrayValue>>(&target);
+        if (array == nullptr || (*array)->elements.empty()) {
+            report_error("function 'pop' requires a non-empty array");
+            return false;
+        }
+        value = (*array)->elements.back();
+        (*array)->elements.pop_back();
+        return true;
+    }
+
     const auto math_function = [&](double (*function)(double), bool non_negative) {
         if (call.arguments.size() != 1) {
             report_error("math function '" + callee->name + "' expects one argument");
@@ -546,6 +601,18 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
     if (callee->name == "ceil") {
         return math_function(static_cast<double (*)(double)>(std::ceil), false);
     }
+    if (callee->name == "exp") {
+        return math_function(static_cast<double (*)(double)>(std::exp), false);
+    }
+    if (callee->name == "asin") {
+        return math_function(static_cast<double (*)(double)>(std::asin), false);
+    }
+    if (callee->name == "acos") {
+        return math_function(static_cast<double (*)(double)>(std::acos), false);
+    }
+    if (callee->name == "atan") {
+        return math_function(static_cast<double (*)(double)>(std::atan), false);
+    }
     if (callee->name == "pow") {
         if (call.arguments.size() != 2) {
             report_error("math function 'pow' expects two arguments");
@@ -563,6 +630,25 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
             return false;
         }
         value = std::pow(base_number, exponent_number);
+        return true;
+    }
+    if (callee->name == "atan2" || callee->name == "min" || callee->name == "max") {
+        if (call.arguments.size() != 2) {
+            report_error("function '" + callee->name + "' expects two arguments");
+            return false;
+        }
+        Value left;
+        Value right;
+        if (!evaluate(*call.arguments[0], left) || !evaluate(*call.arguments[1], right)) return false;
+        if (!is_numeric(left) || !is_numeric(right)) {
+            report_error("function '" + callee->name + "' requires numeric arguments");
+            return false;
+        }
+        const double left_number = numeric_value(left);
+        const double right_number = numeric_value(right);
+        if (callee->name == "atan2") value = std::atan2(left_number, right_number);
+        else if (callee->name == "min") value = std::min(left_number, right_number);
+        else value = std::max(left_number, right_number);
         return true;
     }
 

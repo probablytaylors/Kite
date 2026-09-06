@@ -24,3 +24,4 @@
 - Added the initial bytecode compiler, constant pool, stack VM, and `--bytecode` CLI mode.
 - Added initial source-level standard library modules under `std/`.
 - Added CTest coverage for the standard-library modules.
+- Added semantic analysis, runtime type inspection, mutable array operations, and expanded math functions.
