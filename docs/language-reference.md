@@ -155,6 +155,19 @@ inputs. Invalid arguments and domain errors are reported at runtime.
 
 Modules and concurrency APIs are planned but not implemented yet.
 
+## Standard Library
+
+The `std/` directory contains the first source-level library modules:
+
+- `std/math.kite`
+- `std/strings.kite`
+- `std/collections.kite`
+- `std/io.kite`
+
+They are valid standalone Kite source files and wrap the current built-ins.
+Imports are not implemented yet, so programs must not assume these modules are
+available automatically.
+
 The bytecode compiler currently supports literals, variables, assignment,
 arithmetic, comparisons, boolean logic, unary operators, string concatenation,
 and `print`. Control flow, functions, arrays, maps, and math built-ins still

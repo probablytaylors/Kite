@@ -1,0 +1,7 @@
+fn read_text(path) {
+    return read_file(path)
+}
+
+fn write_text(path, content) {
+    return write_file(path, content)
+}

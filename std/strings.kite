@@ -1,0 +1,15 @@
+fn shout(value) {
+    return upper(value)
+}
+
+fn quiet(value) {
+    return lower(value)
+}
+
+fn join(left, right) {
+    return left + right
+}
+
+fn has_text(value) {
+    return len(value) > 0
+}

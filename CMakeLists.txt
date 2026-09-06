@@ -42,13 +42,20 @@ if(BUILD_TESTING)
         tests/bytecode/bytecode_tests.cpp
     )
 
+    add_executable(kite_stdlib_tests
+        tests/stdlib/stdlib_tests.cpp
+    )
+
     target_link_libraries(kite_lexer_tests PRIVATE kite_core)
     target_link_libraries(kite_parser_tests PRIVATE kite_core)
     target_link_libraries(kite_interpreter_tests PRIVATE kite_core)
     target_link_libraries(kite_bytecode_tests PRIVATE kite_core)
+    target_link_libraries(kite_stdlib_tests PRIVATE kite_core)
+    target_compile_definitions(kite_stdlib_tests PRIVATE KITE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
     add_test(NAME kite_lexer_tests COMMAND kite_lexer_tests)
     add_test(NAME kite_parser_tests COMMAND kite_parser_tests)
     add_test(NAME kite_interpreter_tests COMMAND kite_interpreter_tests)
     add_test(NAME kite_bytecode_tests COMMAND kite_bytecode_tests)
+    add_test(NAME kite_stdlib_tests COMMAND kite_stdlib_tests)
 endif()

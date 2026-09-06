@@ -61,7 +61,7 @@ Build the project first, then run:
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-CTest runs the lexer, parser, and interpreter test executables.
+CTest runs lexer, parser, interpreter, bytecode, and standard-library tests.
 
 ## CMake Targets
 
@@ -71,6 +71,8 @@ CTest runs the lexer, parser, and interpreter test executables.
 - `kite_lexer_tests`: lexer behavior tests.
 - `kite_parser_tests`: parser and AST behavior tests.
 - `kite_interpreter_tests`: interpreter behavior tests.
+- `kite_bytecode_tests`: bytecode compiler and VM tests.
+- `kite_stdlib_tests`: source-level standard-library tests.
 
 ## Development Roadmap
 
@@ -89,6 +91,7 @@ CTest runs the lexer, parser, and interpreter test executables.
 - [x] Basic file read/write built-ins
 - [x] Initial bytecode compiler and stack VM
 - [x] Initial standard math functions
+- [x] Initial source-level standard library modules
 - [ ] Semantic analysis and richer type checking
 - [ ] Runtime services and type system
 - [ ] Expanded standard library and advanced mathematics

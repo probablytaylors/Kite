@@ -1,0 +1,11 @@
+fn first(values) {
+    return values[0]
+}
+
+fn last(values) {
+    return values[len(values) - 1]
+}
+
+fn is_empty(values) {
+    return len(values) == 0
+}
