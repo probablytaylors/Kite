@@ -430,9 +430,9 @@ std::unique_ptr<Expression> Parser::parse_primary() {
         return std::make_unique<StringExpression>(value);
     }
     case TokenType::LeftBracket:
-        return parse_array();
+        return parse_postfix(parse_array());
     case TokenType::LeftBrace:
-        return parse_map();
+        return parse_postfix(parse_map());
     case TokenType::LeftParen: {
         advance();
         auto expression = parse_expression();

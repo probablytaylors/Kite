@@ -100,7 +100,8 @@ CTest runs lexer, parser, interpreter, bytecode, and standard-library tests.
 - [ ] Richer static inference and user-defined types
 - [ ] Maps mutation and collection methods
 - [ ] Modules and imports
-- [ ] Full bytecode support for control flow, functions, and collections
+- [x] Bytecode control flow and collection literals/indexing
+- [ ] Bytecode function call frames and returns
 - [ ] Tooling such as a REPL, formatter, debugger, and package manager
 
 See [docs/architecture.md](docs/architecture.md),

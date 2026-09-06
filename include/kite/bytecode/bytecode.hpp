@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <unordered_map>
@@ -11,7 +12,13 @@
 
 namespace kite {
 
-using BytecodeValue = std::variant<bool, std::int64_t, double, std::string>;
+struct BytecodeArray;
+struct BytecodeMap;
+using BytecodeValue = std::variant<bool, std::int64_t, double, std::string,
+    std::shared_ptr<BytecodeArray>, std::shared_ptr<BytecodeMap>>;
+
+struct BytecodeArray { std::vector<BytecodeValue> elements; };
+struct BytecodeMap { std::unordered_map<std::string, BytecodeValue> entries; };
 
 enum class OpCode {
     Constant,
@@ -33,6 +40,11 @@ enum class OpCode {
     Not,
     Print,
     Pop,
+    Jump,
+    JumpIfFalse,
+    MakeArray,
+    MakeMap,
+    Index,
     Halt
 };
 
@@ -57,6 +69,8 @@ private:
     void report_error(const std::string& message);
     void compile_statement(const Statement& statement);
     void compile_expression(const Expression& expression);
+    std::size_t emit_jump(OpCode opcode);
+    void patch_jump(std::size_t instruction, std::size_t target);
 
     Chunk chunk_;
     std::vector<std::string> errors_;
@@ -71,6 +85,7 @@ public:
 
 private:
     bool binary_operation(OpCode opcode);
+    bool is_truthy(const BytecodeValue& value) const;
     void report_error(const std::string& message);
 
     std::ostream& output_;

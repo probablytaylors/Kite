@@ -187,6 +187,6 @@ available automatically.
 
 The bytecode compiler currently supports literals, variables, assignment,
 arithmetic, comparisons, boolean logic, unary operators, string concatenation,
-and `print`. Control flow, functions, arrays, maps, and math built-ins still
-run through the tree-walking interpreter until their bytecode instructions are
-implemented.
+`print`, `if`/`else`, `while`, arrays, maps, and indexing. User-defined
+functions and math/file built-ins still run through the tree-walking
+interpreter until bytecode call frames and native-call instructions are added.

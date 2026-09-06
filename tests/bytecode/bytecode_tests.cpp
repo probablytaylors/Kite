@@ -33,6 +33,11 @@ int main() {
     all_passed &= check(run_source("let name = \"Kite\" print(\"Hello, \" + name)", "Hello, Kite\n"),
         "string bytecode");
     all_passed &= check(run_source("print(2 < 3, true && !false)", "true true\n"), "boolean bytecode");
+    all_passed &= check(run_source("if (true) { print(1) } else { print(2) }", "1\n"), "conditional bytecode");
+    all_passed &= check(run_source("let count = 0 while (count < 3) { print(count) count = count + 1 }",
+        "0\n1\n2\n"), "loop bytecode");
+    all_passed &= check(run_source("let values = [1, 2] print(values) print(values[1]) print({\"x\": 3}[\"x\"])",
+        "[1, 2]\n2\n3\n"), "collection bytecode");
     all_passed &= check(!run_source("print(missing)", ""), "bytecode runtime error");
 
     if (all_passed) {

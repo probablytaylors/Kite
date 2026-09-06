@@ -24,4 +24,5 @@ work.
 The initial bytecode layer compiles a supported expression subset into a
 constant pool and instruction stream. A stack VM executes those instructions;
 the tree-walking interpreter remains the complete runtime path for features
-not yet represented in bytecode.
+not yet represented in bytecode. Control flow and collection construction are
+now represented; user-defined function frames remain on the compiler roadmap.

@@ -1,5 +1,6 @@
 #include "kite/bytecode/bytecode.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -15,6 +16,8 @@ namespace {
 bool is_numeric(const BytecodeValue& value) {
     return std::holds_alternative<std::int64_t>(value) || std::holds_alternative<double>(value);
 }
+
+bool is_boolean(const BytecodeValue& value) { return std::holds_alternative<bool>(value); }
 
 double as_number(const BytecodeValue& value) {
     if (const auto* integer = std::get_if<std::int64_t>(&value)) {
@@ -48,6 +51,16 @@ void BytecodeCompiler::emit(OpCode opcode, std::size_t operand) {
     chunk_.code.push_back({opcode, operand});
 }
 
+std::size_t BytecodeCompiler::emit_jump(OpCode opcode) {
+    const std::size_t index = chunk_.code.size();
+    emit(opcode, 0);
+    return index;
+}
+
+void BytecodeCompiler::patch_jump(std::size_t instruction, std::size_t target) {
+    chunk_.code[instruction].operand = target;
+}
+
 void BytecodeCompiler::report_error(const std::string& message) {
     errors_.push_back(message);
 }
@@ -65,6 +78,34 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
     }
     if (const auto* expression = dynamic_cast<const ExpressionStatement*>(&statement)) {
         compile_expression(*expression->expression);
+        emit(OpCode::Pop);
+        return;
+    }
+    if (const auto* conditional = dynamic_cast<const IfStatement*>(&statement)) {
+        compile_expression(*conditional->condition);
+        const std::size_t false_jump = emit_jump(OpCode::JumpIfFalse);
+        emit(OpCode::Pop);
+        for (const auto& child : conditional->then_branch) compile_statement(*child);
+        if (!conditional->else_branch.empty()) {
+            const std::size_t end_jump = emit_jump(OpCode::Jump);
+            patch_jump(false_jump, chunk_.code.size());
+            emit(OpCode::Pop);
+            for (const auto& child : conditional->else_branch) compile_statement(*child);
+            patch_jump(end_jump, chunk_.code.size());
+        } else {
+            patch_jump(false_jump, chunk_.code.size());
+            emit(OpCode::Pop);
+        }
+        return;
+    }
+    if (const auto* loop = dynamic_cast<const WhileStatement*>(&statement)) {
+        const std::size_t start = chunk_.code.size();
+        compile_expression(*loop->condition);
+        const std::size_t end_jump = emit_jump(OpCode::JumpIfFalse);
+        emit(OpCode::Pop);
+        for (const auto& child : loop->body) compile_statement(*child);
+        emit(OpCode::Jump, start);
+        patch_jump(end_jump, chunk_.code.size());
         emit(OpCode::Pop);
         return;
     }
@@ -86,6 +127,25 @@ void BytecodeCompiler::compile_expression(const Expression& expression) {
     }
     if (const auto* string = dynamic_cast<const StringExpression*>(&expression)) {
         emit(OpCode::Constant, add_constant(string->value));
+        return;
+    }
+    if (const auto* array = dynamic_cast<const ArrayExpression*>(&expression)) {
+        for (const auto& element : array->elements) compile_expression(*element);
+        emit(OpCode::MakeArray, array->elements.size());
+        return;
+    }
+    if (const auto* map = dynamic_cast<const MapExpression*>(&expression)) {
+        for (const auto& entry : map->entries) {
+            compile_expression(*entry.first);
+            compile_expression(*entry.second);
+        }
+        emit(OpCode::MakeMap, map->entries.size());
+        return;
+    }
+    if (const auto* index = dynamic_cast<const IndexExpression*>(&expression)) {
+        compile_expression(*index->target);
+        compile_expression(*index->index);
+        emit(OpCode::Index);
         return;
     }
     if (const auto* identifier = dynamic_cast<const IdentifierExpression*>(&expression)) {
@@ -134,6 +194,11 @@ void BytecodeCompiler::compile_expression(const Expression& expression) {
 
 BytecodeVm::BytecodeVm(std::ostream& output) : output_(output) {}
 
+bool BytecodeVm::is_truthy(const BytecodeValue& value) const {
+    const auto* boolean = std::get_if<bool>(&value);
+    return boolean != nullptr && *boolean;
+}
+
 bool BytecodeVm::run(const Chunk& chunk) {
     stack_.clear();
     variables_.clear();
@@ -180,6 +245,51 @@ bool BytecodeVm::run(const Chunk& chunk) {
             if (stack_.empty()) { report_error("stack underflow on pop"); return false; }
             stack_.pop_back();
             break;
+        case OpCode::Jump:
+            instruction_pointer = instruction.operand - 1;
+            break;
+        case OpCode::JumpIfFalse:
+            if (stack_.empty()) { report_error("stack underflow on conditional jump"); return false; }
+            if (!is_truthy(stack_.back())) { instruction_pointer = instruction.operand - 1; }
+            break;
+        case OpCode::MakeArray: {
+            if (stack_.size() < instruction.operand) { report_error("stack underflow on array construction"); return false; }
+            auto array = std::make_shared<BytecodeArray>();
+            array->elements.resize(instruction.operand);
+            for (std::size_t index = instruction.operand; index > 0; --index) {
+                array->elements[index - 1] = stack_.back(); stack_.pop_back();
+            }
+            stack_.push_back(std::move(array));
+            break;
+        }
+        case OpCode::MakeMap: {
+            if (stack_.size() < instruction.operand * 2) { report_error("stack underflow on map construction"); return false; }
+            auto map = std::make_shared<BytecodeMap>();
+            for (std::size_t index = 0; index < instruction.operand; ++index) {
+                BytecodeValue value = stack_.back(); stack_.pop_back();
+                BytecodeValue key = stack_.back(); stack_.pop_back();
+                const auto* string_key = std::get_if<std::string>(&key);
+                if (string_key == nullptr) { report_error("map keys must be strings"); return false; }
+                map->entries[*string_key] = std::move(value);
+            }
+            stack_.push_back(std::move(map));
+            break;
+        }
+        case OpCode::Index: {
+            if (stack_.size() < 2) { report_error("stack underflow on index"); return false; }
+            BytecodeValue index = stack_.back(); stack_.pop_back();
+            BytecodeValue target = stack_.back(); stack_.pop_back();
+            if (const auto* array = std::get_if<std::shared_ptr<BytecodeArray>>(&target)) {
+                const auto* integer = std::get_if<std::int64_t>(&index);
+                if (!integer || *integer < 0 || static_cast<std::size_t>(*integer) >= (*array)->elements.size()) { report_error("array index out of bounds"); return false; }
+                stack_.push_back((*array)->elements[static_cast<std::size_t>(*integer)]);
+            } else if (const auto* map = std::get_if<std::shared_ptr<BytecodeMap>>(&target)) {
+                const auto* key = std::get_if<std::string>(&index);
+                if (!key || !(*map)->entries.contains(*key)) { report_error("map key not found"); return false; }
+                stack_.push_back((*map)->entries.at(*key));
+            } else { report_error("index target must be an array or map"); return false; }
+            break;
+        }
         case OpCode::Negate:
         case OpCode::Not: {
             if (stack_.empty()) { report_error("stack underflow on unary operation"); return false; }
@@ -265,6 +375,18 @@ std::string bytecode_value_to_string(const BytecodeValue& value) {
     if (const auto* boolean = std::get_if<bool>(&value)) return *boolean ? "true" : "false";
     if (const auto* integer = std::get_if<std::int64_t>(&value)) return std::to_string(*integer);
     if (const auto* floating_point = std::get_if<double>(&value)) { std::ostringstream output; output << std::setprecision(15) << *floating_point; return output.str(); }
+    if (const auto* array = std::get_if<std::shared_ptr<BytecodeArray>>(&value)) {
+        std::ostringstream output; output << '[';
+        for (std::size_t index = 0; index < (*array)->elements.size(); ++index) { if (index > 0) output << ", "; output << bytecode_value_to_string((*array)->elements[index]); }
+        output << ']'; return output.str();
+    }
+    if (const auto* map = std::get_if<std::shared_ptr<BytecodeMap>>(&value)) {
+        std::ostringstream output; output << '{'; std::vector<std::string> keys;
+        for (const auto& entry : (*map)->entries) keys.push_back(entry.first);
+        std::sort(keys.begin(), keys.end());
+        for (std::size_t index = 0; index < keys.size(); ++index) { if (index > 0) output << ", "; output << '"' << keys[index] << "\": " << bytecode_value_to_string((*map)->entries.at(keys[index])); }
+        output << '}'; return output.str();
+    }
     return std::get<std::string>(value);
 }
 
