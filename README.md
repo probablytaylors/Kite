@@ -1,97 +1,101 @@
 # Kite
 
-Kite is a programming language built from scratch.
+Kite is a programming language built from scratch in C++.
 
-## Roadmap
+## Current Status
 
-### Lexer
-- [ ] Token system
-- [ ] Numbers
-- [ ] Strings
-- [ ] Identifiers
-- [ ] Keywords
-- [ ] Operators
-- [ ] Comments
+The lexer, parser, AST, and a small interpreter are implemented. Kite can read
+a source file, evaluate numeric and boolean values, perform basic arithmetic
+and comparisons, store `let` bindings, and use `if`/`else` with `print`.
 
-### Parser
-- [ ] Expressions
-- [ ] Variables
-- [ ] Statements
-- [ ] Functions
-- [ ] Conditionals
-- [ ] Loops
-- [ ] Parser errors
+## Project Structure
 
-### AST
-- [ ] AST nodes
-- [ ] Expressions
-- [ ] Statements
-- [ ] Functions
-- [ ] Blocks
+```text
+.
+├── .github/workflows/       Continuous integration configuration
+├── .vscode/                 VS Code workspace settings
+├── docs/                    Architecture and language notes
+├── examples/                Small future Kite programs
+├── include/kite/            Public C++ headers
+├── src/interpreter/         Interpreter implementation
+├── src/lexer/               Lexer and token implementation
+├── src/parser/              Parser implementation
+├── std/                     Future standard library
+├── tests/                   C++ tests and component test areas
+├── tools/                   Future developer tools
+├── CMakeLists.txt
+├── CHANGELOG.md
+└── LICENSE
+```
 
-### Interpreter
-- [ ] Variables
-- [ ] Arithmetic
-- [ ] Comparisons
-- [ ] Boolean logic
-- [ ] Conditions
-- [ ] Loops
-- [ ] Functions
-- [ ] Scope
-- [ ] Runtime errors
+## Build
 
-### Types
-- [ ] Integers
-- [ ] Floats
-- [ ] Strings
-- [ ] Booleans
-- [ ] Arrays
-- [ ] Type checking
+From a PowerShell terminal at the repository root:
 
-### Standard Library
-- [ ] print()
-- [ ] input()
-- [ ] Math
-- [ ] Strings
-- [ ] Files
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Debug
+```
 
-### Modules
-- [ ] Imports
-- [ ] Exports
-- [ ] Standard modules
+The executable is written to `build/Debug/kite.exe`.
 
-### Compiler
-- [ ] Bytecode
-- [ ] Virtual machine
-- [ ] LLVM backend
-- [ ] Native executables
+## Run
 
-### Tooling
-- [ ] Kite CLI
-- [ ] Formatter
-- [ ] REPL
-- [ ] Error messages
-- [ ] Documentation
+```powershell
+.\build\Debug\kite.exe examples\hello.kite
+```
 
-### Examples
-- [ ] Hello World
-- [ ] Calculator
-- [ ] Number guessing game
-- [ ] File reader
-- [ ] HTTP client
-- [ ] Small game
+The command reads, parses, and executes a Kite source file.
 
-## Goals
+The initial bytecode compiler and stack VM can be selected with:
 
-- Simple syntax
-- Fast execution
-- Useful standard library
-- Good error messages
-- Easy to learn
+```powershell
+.\build\Debug\kite.exe --bytecode examples\calculator.kite
+```
 
-## Example
+## Tests
 
-```kite
-let name = "World"
+Build the project first, then run:
 
-print("Hello, " + name)
+```powershell
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+CTest runs the lexer, parser, and interpreter test executables.
+
+## CMake Targets
+
+- `kite_core`: static library containing the lexer, parser, AST, interpreter, and bytecode VM.
+- `kite`: command-line Kite interpreter.
+- `kite --bytecode`: bytecode compiler and stack VM mode.
+- `kite_lexer_tests`: lexer behavior tests.
+- `kite_parser_tests`: parser and AST behavior tests.
+- `kite_interpreter_tests`: interpreter behavior tests.
+
+## Development Roadmap
+
+- [x] Initial lexer, token model, and command-line tool
+- [x] Initial parser and AST
+- [x] Initial interpreter with variables and `print`
+- [x] Integer and floating-point arithmetic with operator precedence
+- [x] Booleans, comparisons, and `if`/`else`
+- [x] `while` loops
+- [x] User-defined functions with parameters, returns, local scope, and recursion
+- [x] Array literals and read-only indexing
+- [x] Maps with string-key lookup
+- [x] Basic string and collection utilities
+- [x] Variable assignment and string concatenation
+- [x] Boolean logic with short-circuit evaluation
+- [x] Basic file read/write built-ins
+- [x] Initial bytecode compiler and stack VM
+- [x] Initial standard math functions
+- [ ] Semantic analysis and richer type checking
+- [ ] Runtime services and type system
+- [ ] Expanded standard library and advanced mathematics
+- [ ] Collections and modules
+- [ ] Full bytecode support for control flow, functions, and collections
+- [ ] Tooling such as a REPL, formatter, debugger, and package manager
+
+See [docs/architecture.md](docs/architecture.md),
+[docs/language-notes.md](docs/language-notes.md), and the
+[language reference](docs/language-reference.md) for current documentation.

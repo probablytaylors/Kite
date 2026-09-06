@@ -1,0 +1,8 @@
+let user = {
+    "name": "Kite",
+    "version": 1
+}
+
+print(user["name"])
+print(len(user))
+print(upper(user["name"]))

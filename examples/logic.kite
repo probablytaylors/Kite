@@ -1,0 +1,8 @@
+let ready = true
+let has_items = false
+
+if (ready && !has_items) {
+    print("waiting for items")
+} else {
+    print("ready")
+}

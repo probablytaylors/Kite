@@ -1,0 +1,271 @@
+#include "kite/bytecode/bytecode.hpp"
+
+#include <cmath>
+#include <iomanip>
+#include <limits>
+#include <ostream>
+#include <sstream>
+#include <unordered_map>
+#include <utility>
+
+namespace kite {
+
+namespace {
+
+bool is_numeric(const BytecodeValue& value) {
+    return std::holds_alternative<std::int64_t>(value) || std::holds_alternative<double>(value);
+}
+
+double as_number(const BytecodeValue& value) {
+    if (const auto* integer = std::get_if<std::int64_t>(&value)) {
+        return static_cast<double>(*integer);
+    }
+    return std::get<double>(value);
+}
+
+}
+
+Chunk BytecodeCompiler::compile(const Program& program) {
+    chunk_ = {};
+    errors_.clear();
+    for (const auto& statement : program.statements) {
+        compile_statement(*statement);
+    }
+    emit(OpCode::Halt);
+    return chunk_;
+}
+
+const std::vector<std::string>& BytecodeCompiler::errors() const {
+    return errors_;
+}
+
+std::size_t BytecodeCompiler::add_constant(BytecodeValue value) {
+    chunk_.constants.push_back(std::move(value));
+    return chunk_.constants.size() - 1;
+}
+
+void BytecodeCompiler::emit(OpCode opcode, std::size_t operand) {
+    chunk_.code.push_back({opcode, operand});
+}
+
+void BytecodeCompiler::report_error(const std::string& message) {
+    errors_.push_back(message);
+}
+
+void BytecodeCompiler::compile_statement(const Statement& statement) {
+    if (const auto* let = dynamic_cast<const LetStatement*>(&statement)) {
+        compile_expression(*let->initializer);
+        emit(OpCode::Store, add_constant(let->name));
+        return;
+    }
+    if (const auto* assignment = dynamic_cast<const AssignmentStatement*>(&statement)) {
+        compile_expression(*assignment->value);
+        emit(OpCode::Store, add_constant(assignment->name));
+        return;
+    }
+    if (const auto* expression = dynamic_cast<const ExpressionStatement*>(&statement)) {
+        compile_expression(*expression->expression);
+        emit(OpCode::Pop);
+        return;
+    }
+    report_error("bytecode compiler does not support this statement yet");
+}
+
+void BytecodeCompiler::compile_expression(const Expression& expression) {
+    if (const auto* boolean = dynamic_cast<const BooleanExpression*>(&expression)) {
+        emit(OpCode::Constant, add_constant(boolean->value));
+        return;
+    }
+    if (const auto* integer = dynamic_cast<const IntegerExpression*>(&expression)) {
+        emit(OpCode::Constant, add_constant(integer->value));
+        return;
+    }
+    if (const auto* floating_point = dynamic_cast<const FloatExpression*>(&expression)) {
+        emit(OpCode::Constant, add_constant(floating_point->value));
+        return;
+    }
+    if (const auto* string = dynamic_cast<const StringExpression*>(&expression)) {
+        emit(OpCode::Constant, add_constant(string->value));
+        return;
+    }
+    if (const auto* identifier = dynamic_cast<const IdentifierExpression*>(&expression)) {
+        emit(OpCode::Load, add_constant(identifier->name));
+        return;
+    }
+    if (const auto* unary = dynamic_cast<const UnaryExpression*>(&expression)) {
+        compile_expression(*unary->operand);
+        emit(unary->operator_type == UnaryOperator::Negate ? OpCode::Negate : OpCode::Not);
+        return;
+    }
+    if (const auto* binary = dynamic_cast<const BinaryExpression*>(&expression)) {
+        compile_expression(*binary->left);
+        compile_expression(*binary->right);
+        switch (binary->operator_type) {
+        case BinaryOperator::Add: emit(OpCode::Add); break;
+        case BinaryOperator::Subtract: emit(OpCode::Subtract); break;
+        case BinaryOperator::Multiply: emit(OpCode::Multiply); break;
+        case BinaryOperator::Divide: emit(OpCode::Divide); break;
+        case BinaryOperator::Equal: emit(OpCode::Equal); break;
+        case BinaryOperator::NotEqual: emit(OpCode::NotEqual); break;
+        case BinaryOperator::Less: emit(OpCode::Less); break;
+        case BinaryOperator::LessEqual: emit(OpCode::LessEqual); break;
+        case BinaryOperator::Greater: emit(OpCode::Greater); break;
+        case BinaryOperator::GreaterEqual: emit(OpCode::GreaterEqual); break;
+        case BinaryOperator::And: emit(OpCode::And); break;
+        case BinaryOperator::Or: emit(OpCode::Or); break;
+        }
+        return;
+    }
+    if (const auto* call = dynamic_cast<const CallExpression*>(&expression)) {
+        const auto* callee = dynamic_cast<const IdentifierExpression*>(call->callee.get());
+        if (callee == nullptr || callee->name != "print") {
+            report_error("bytecode compiler currently supports only print calls");
+            return;
+        }
+        for (const auto& argument : call->arguments) {
+            compile_expression(*argument);
+        }
+        emit(OpCode::Print, call->arguments.size());
+        emit(OpCode::Constant, add_constant(std::string()));
+        return;
+    }
+    report_error("bytecode compiler does not support this expression yet");
+}
+
+BytecodeVm::BytecodeVm(std::ostream& output) : output_(output) {}
+
+bool BytecodeVm::run(const Chunk& chunk) {
+    stack_.clear();
+    variables_.clear();
+    errors_.clear();
+    for (std::size_t instruction_pointer = 0; instruction_pointer < chunk.code.size(); ++instruction_pointer) {
+        const Instruction instruction = chunk.code[instruction_pointer];
+        switch (instruction.opcode) {
+        case OpCode::Constant:
+            stack_.push_back(chunk.constants[instruction.operand]);
+            break;
+        case OpCode::Load: {
+            const auto& name = std::get<std::string>(chunk.constants[instruction.operand]);
+            const auto variable = variables_.find(name);
+            if (variable == variables_.end()) {
+                report_error("unknown variable: " + name);
+                return false;
+            }
+            stack_.push_back(variable->second);
+            break;
+        }
+        case OpCode::Store: {
+            if (stack_.empty()) { report_error("stack underflow on store"); return false; }
+            const auto& name = std::get<std::string>(chunk.constants[instruction.operand]);
+            variables_[name] = stack_.back();
+            stack_.pop_back();
+            break;
+        }
+        case OpCode::Print:
+            if (stack_.size() < instruction.operand) { report_error("stack underflow on print"); return false; }
+            {
+                std::vector<std::string> values;
+                for (std::size_t index = 0; index < instruction.operand; ++index) {
+                    values.push_back(bytecode_value_to_string(stack_.back()));
+                    stack_.pop_back();
+                }
+                for (std::size_t index = 0; index < values.size(); ++index) {
+                    if (index > 0) output_ << ' ';
+                    output_ << values[values.size() - index - 1];
+                }
+                output_ << '\n';
+            }
+            break;
+        case OpCode::Pop:
+            if (stack_.empty()) { report_error("stack underflow on pop"); return false; }
+            stack_.pop_back();
+            break;
+        case OpCode::Negate:
+        case OpCode::Not: {
+            if (stack_.empty()) { report_error("stack underflow on unary operation"); return false; }
+            BytecodeValue value = stack_.back();
+            stack_.pop_back();
+            if (instruction.opcode == OpCode::Not) {
+                const auto* boolean = std::get_if<bool>(&value);
+                if (boolean == nullptr) { report_error("unary '!' requires a boolean value"); return false; }
+                stack_.push_back(!*boolean);
+            } else if (const auto* integer = std::get_if<std::int64_t>(&value)) {
+                stack_.push_back(-*integer);
+            } else if (const auto* floating_point = std::get_if<double>(&value)) {
+                stack_.push_back(-*floating_point);
+            } else {
+                report_error("unary '-' requires a numeric value"); return false;
+            }
+            break;
+        }
+        case OpCode::Add:
+        case OpCode::Subtract:
+        case OpCode::Multiply:
+        case OpCode::Divide:
+        case OpCode::Equal:
+        case OpCode::NotEqual:
+        case OpCode::Less:
+        case OpCode::LessEqual:
+        case OpCode::Greater:
+        case OpCode::GreaterEqual:
+        case OpCode::And:
+        case OpCode::Or:
+            if (!binary_operation(instruction.opcode)) return false;
+            break;
+        case OpCode::Halt:
+            return true;
+        }
+    }
+    return true;
+}
+
+bool BytecodeVm::binary_operation(OpCode opcode) {
+    if (stack_.size() < 2) { report_error("stack underflow on binary operation"); return false; }
+    BytecodeValue right = stack_.back(); stack_.pop_back();
+    BytecodeValue left = stack_.back(); stack_.pop_back();
+    if (opcode == OpCode::And || opcode == OpCode::Or) {
+        const auto* left_boolean = std::get_if<bool>(&left);
+        const auto* right_boolean = std::get_if<bool>(&right);
+        if (!left_boolean || !right_boolean) { report_error("logical operators require boolean values"); return false; }
+        stack_.push_back(opcode == OpCode::And ? *left_boolean && *right_boolean : *left_boolean || *right_boolean);
+        return true;
+    }
+    if ((opcode == OpCode::Add) && std::holds_alternative<std::string>(left) && std::holds_alternative<std::string>(right)) {
+        stack_.push_back(std::get<std::string>(left) + std::get<std::string>(right));
+        return true;
+    }
+    if (opcode == OpCode::Equal || opcode == OpCode::NotEqual) {
+        bool equal = false;
+        if (is_numeric(left) && is_numeric(right)) equal = as_number(left) == as_number(right);
+        else if (left.index() == right.index()) equal = left == right;
+        stack_.push_back(opcode == OpCode::Equal ? equal : !equal);
+        return true;
+    }
+    if (!is_numeric(left) || !is_numeric(right)) { report_error("operation requires numeric values"); return false; }
+    const double left_number = as_number(left), right_number = as_number(right);
+    if (opcode == OpCode::Divide && right_number == 0.0) { report_error("cannot divide by zero"); return false; }
+    if (opcode == OpCode::Less || opcode == OpCode::LessEqual || opcode == OpCode::Greater || opcode == OpCode::GreaterEqual) {
+        bool result = opcode == OpCode::Less ? left_number < right_number : opcode == OpCode::LessEqual ? left_number <= right_number : opcode == OpCode::Greater ? left_number > right_number : left_number >= right_number;
+        stack_.push_back(result);
+        return true;
+    }
+    if (std::holds_alternative<std::int64_t>(left) && std::holds_alternative<std::int64_t>(right) && opcode != OpCode::Divide) {
+        const auto a = std::get<std::int64_t>(left), b = std::get<std::int64_t>(right);
+        stack_.push_back(opcode == OpCode::Add ? a + b : opcode == OpCode::Subtract ? a - b : a * b);
+    } else {
+        stack_.push_back(opcode == OpCode::Add ? left_number + right_number : opcode == OpCode::Subtract ? left_number - right_number : opcode == OpCode::Multiply ? left_number * right_number : left_number / right_number);
+    }
+    return true;
+}
+
+const std::vector<std::string>& BytecodeVm::errors() const { return errors_; }
+void BytecodeVm::report_error(const std::string& message) { errors_.push_back(message); }
+
+std::string bytecode_value_to_string(const BytecodeValue& value) {
+    if (const auto* boolean = std::get_if<bool>(&value)) return *boolean ? "true" : "false";
+    if (const auto* integer = std::get_if<std::int64_t>(&value)) return std::to_string(*integer);
+    if (const auto* floating_point = std::get_if<double>(&value)) { std::ostringstream output; output << std::setprecision(15) << *floating_point; return output.str(); }
+    return std::get<std::string>(value);
+}
+
+} // namespace kite

@@ -1,0 +1,7 @@
+let score = 75
+
+if (score >= 60) {
+    print("passed")
+} else {
+    print("try again")
+}

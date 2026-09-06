@@ -1,0 +1,162 @@
+# Kite Language Reference
+
+This is the current language reference for the implemented Kite runtime. It is
+intentionally short and describes behavior that exists in the interpreter.
+
+## Running A Program
+
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Debug
+.\build\Debug\kite.exe examples\hello.kite
+```
+
+The initial bytecode VM can be selected with:
+
+```powershell
+.\build\Debug\kite.exe --bytecode examples\calculator.kite
+```
+
+## Values
+
+Kite currently supports:
+
+- Integers: `42`
+- Floating-point numbers: `3.14`
+- Booleans: `true`, `false`
+- Strings: `"Kite"`
+- Arrays: `[1, 2, 3]`
+
+## Variables
+
+Use `let` to bind a value:
+
+```kite
+let name = "Kite"
+let count = 3
+```
+
+Bindings are looked up by name. Function calls create a local scope. Existing
+bindings can be updated with assignment:
+
+```kite
+let count = 0
+count = count + 1
+```
+
+## Operators
+
+Arithmetic operators:
+
+```text
++  -  *  /
+```
+
+Unary minus is supported for numeric expressions. String values can be joined
+with `+`. Multiplication and division bind more tightly than addition and subtraction.
+Division always produces a floating-point result.
+
+Comparison operators:
+
+```text
+==  !=  <  <=  >  >=
+```
+
+Comparisons produce booleans. Parentheses can group expressions.
+
+Boolean operators are:
+
+```text
+!  &&  ||
+```
+
+`!` negates a boolean. `&&` and `||` short-circuit and require boolean
+operands. `!` binds most tightly, followed by `&&`, then `||`.
+
+## Arrays
+
+Array elements are comma-separated and may contain expressions:
+
+```kite
+let values = [10, 20, 30]
+print(values[1])
+```
+
+Indexes are zero-based and must be integers. Indexing an invalid value or an
+out-of-range element is a runtime error. Array mutation is not implemented yet.
+
+## Maps
+
+Maps use string keys and support read-only lookup:
+
+```kite
+let user = {"name": "Kite", "version": 1}
+print(user["name"])
+```
+
+Map keys must be strings. Missing keys and invalid key types are runtime errors.
+
+## Conditions And Loops
+
+```kite
+if (score >= 60) {
+    print("passed")
+} else {
+    print("try again")
+}
+
+while (count < 3) {
+    print(count)
+    let count = count + 1
+}
+```
+
+Conditions must evaluate to booleans.
+
+## Functions
+
+```kite
+fn add(a, b) {
+    return a + b
+}
+
+print(add(2, 3))
+```
+
+Functions support parameters, local scopes, return values, and recursion.
+
+## Built-ins
+
+The current built-in functions are:
+
+- `print(...)`: writes values separated by spaces and ends with a newline.
+- `len(value)`: returns the size of a string, array, or map.
+- `upper(value)`: converts a string to uppercase.
+- `lower(value)`: converts a string to lowercase.
+- `read_file(path)`: reads a file as a string.
+- `write_file(path, content)`: writes a string and returns `true`.
+
+## Math Functions
+
+The interpreter provides these numeric functions:
+
+- `sqrt(value)`
+- `pow(base, exponent)`
+- `sin(value)`
+- `cos(value)`
+- `tan(value)`
+- `log(value)`
+- `abs(value)`
+- `floor(value)`
+- `ceil(value)`
+
+Math functions accept numeric values. `sqrt` and `log` require non-negative
+inputs. Invalid arguments and domain errors are reported at runtime.
+
+Modules and concurrency APIs are planned but not implemented yet.
+
+The bytecode compiler currently supports literals, variables, assignment,
+arithmetic, comparisons, boolean logic, unary operators, string concatenation,
+and `print`. Control flow, functions, arrays, maps, and math built-ins still
+run through the tree-walking interpreter until their bytecode instructions are
+implemented.
