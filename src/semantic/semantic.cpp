@@ -1,8 +1,25 @@
 #include "kite/semantic/semantic.hpp"
 
+#include <array>
+#include <string_view>
 #include <utility>
 
 namespace kite {
+
+namespace {
+
+bool is_math_function(std::string_view name) {
+    static constexpr std::array<std::string_view, 16> names = {
+        "sqrt", "pow", "sin", "cos", "tan", "log", "abs", "floor", "ceil", "exp",
+        "asin", "acos", "atan", "atan2", "min", "max",
+    };
+    for (const auto& candidate : names) {
+        if (candidate == name) return true;
+    }
+    return false;
+}
+
+} // namespace
 
 const char* semantic_type_name(SemanticType type) {
     switch (type) {
@@ -42,9 +59,14 @@ bool SemanticAnalyzer::is_numeric(SemanticType type) const {
     return type == SemanticType::Integer || type == SemanticType::Float;
 }
 
+bool SemanticAnalyzer::is_condition(SemanticType type) const {
+    return type == SemanticType::Boolean || type == SemanticType::Unknown;
+}
+
 bool SemanticAnalyzer::is_assignable(SemanticType expected, SemanticType actual) const {
     return expected == SemanticType::Unknown || actual == SemanticType::Unknown || expected == actual ||
-        (expected == SemanticType::Float && actual == SemanticType::Integer);
+        (expected == SemanticType::Float && actual == SemanticType::Integer) ||
+        (expected == SemanticType::Integer && actual == SemanticType::Float);
 }
 
 void SemanticAnalyzer::analyze_block(const std::vector<std::unique_ptr<Statement>>& statements) {
@@ -58,16 +80,20 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         return;
     }
     if (const auto* assignment = dynamic_cast<const AssignmentStatement*>(&statement)) {
-        const auto variable = [&]() -> SemanticType {
-            for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-                const auto found = scope->find(assignment->name);
-                if (found != scope->end()) return found->second;
-            }
-            return SemanticType::Unknown;
-        }();
-        if (variable == SemanticType::Unknown) report_error("assignment to unknown variable: " + assignment->name);
+        SemanticType* variable = nullptr;
+        for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+            const auto found = scope->find(assignment->name);
+            if (found != scope->end()) { variable = &found->second; break; }
+        }
         const SemanticType value_type = analyze_expression(*assignment->value);
-        if (!is_assignable(variable, value_type)) report_error("assignment type mismatch for: " + assignment->name);
+        if (variable == nullptr) {
+            report_error("assignment to unknown variable: " + assignment->name);
+            return;
+        }
+        if (!is_assignable(*variable, value_type)) {
+            report_error("assignment type mismatch for: " + assignment->name);
+        }
+        if (*variable == SemanticType::Unknown) *variable = value_type;
         return;
     }
     if (const auto* expression = dynamic_cast<const ExpressionStatement*>(&statement)) {
@@ -75,20 +101,20 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         return;
     }
     if (const auto* conditional = dynamic_cast<const IfStatement*>(&statement)) {
-        if (analyze_expression(*conditional->condition) != SemanticType::Boolean) report_error("if condition must be boolean");
+        if (!is_condition(analyze_expression(*conditional->condition))) report_error("if condition must be boolean");
         scopes_.emplace_back(); analyze_block(conditional->then_branch); scopes_.pop_back();
         scopes_.emplace_back(); analyze_block(conditional->else_branch); scopes_.pop_back();
         return;
     }
     if (const auto* loop = dynamic_cast<const WhileStatement*>(&statement)) {
-        if (analyze_expression(*loop->condition) != SemanticType::Boolean) report_error("while condition must be boolean");
+        if (!is_condition(analyze_expression(*loop->condition))) report_error("while condition must be boolean");
         scopes_.emplace_back(); analyze_block(loop->body); scopes_.pop_back();
         return;
     }
     if (const auto* loop = dynamic_cast<const ForStatement*>(&statement)) {
         scopes_.emplace_back();
         if (loop->initializer != nullptr) analyze_statement(*loop->initializer);
-        if (loop->condition != nullptr && analyze_expression(*loop->condition) != SemanticType::Boolean) {
+        if (loop->condition != nullptr && !is_condition(analyze_expression(*loop->condition))) {
             report_error("for condition must be boolean");
         }
         if (loop->step != nullptr) analyze_statement(*loop->step);
@@ -175,9 +201,12 @@ SemanticType SemanticAnalyzer::analyze_expression(const Expression& expression) 
         if (callee == nullptr) return SemanticType::Unknown;
         if (callee->name == "print" || callee->name == "write_file") return SemanticType::Empty;
         if (callee->name == "len") return SemanticType::Integer;
-        if (callee->name == "upper" || callee->name == "lower" || callee->name == "read_file") return SemanticType::String;
+        if (callee->name == "upper" || callee->name == "lower" || callee->name == "read_file" ||
+            callee->name == "type_of") return SemanticType::String;
+        if (callee->name == "append") return SemanticType::Array;
         if (functions_.contains(callee->name)) return SemanticType::Unknown;
-        return SemanticType::Float;
+        if (is_math_function(callee->name)) return SemanticType::Float;
+        return SemanticType::Unknown;
     }
     return SemanticType::Unknown;
 }

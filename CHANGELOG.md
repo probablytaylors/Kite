@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed the semantic analyzer rejecting valid code: a variable holding a
+  function's result could not be reassigned, and a parameter could not be used
+  as an `if`/`while`/`for` condition.
+- Added `examples/stackvm.kite`, a stack machine with a call stack written in Kite.
+
 ## 0.1.0 - 2026-09-08
 
 First tagged release. `kite-setup.exe` installs the interpreter, adds it to

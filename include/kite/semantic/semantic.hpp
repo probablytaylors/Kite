@@ -33,6 +33,7 @@ private:
     void analyze_block(const std::vector<std::unique_ptr<Statement>>& statements);
     void report_error(const std::string& message);
     bool is_numeric(SemanticType type) const;
+    bool is_condition(SemanticType type) const;
     bool is_assignable(SemanticType expected, SemanticType actual) const;
 
     std::vector<std::unordered_map<std::string, SemanticType>> scopes_;
