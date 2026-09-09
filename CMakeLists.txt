@@ -18,6 +18,7 @@ add_library(kite_core STATIC
     src/parser/parser.cpp
     src/resolver/resolver.cpp
     src/semantic/semantic.cpp
+    src/update.cpp
     src/value.cpp
 )
 

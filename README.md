@@ -27,6 +27,9 @@ kite --version
 kite run hello.kite
 ```
 
+`kite update` fetches the latest release and installs it in place; `kite update
+--check` just reports whether a newer version is available.
+
 ## The language
 
 Variables with `let`, functions with `fn`, C-style control flow:

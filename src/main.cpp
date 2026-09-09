@@ -9,6 +9,7 @@
 #include "kite/parser/parser.hpp"
 #include "kite/resolver/resolver.hpp"
 #include "kite/semantic/semantic.hpp"
+#include "kite/update.hpp"
 #include "kite/version.hpp"
 
 namespace {
@@ -21,9 +22,21 @@ int usage() {
         "  kite build <file.kite> [-o <out.kbc>]\n"
         "                               Compile a source file to a bytecode artifact\n"
         "  kite exec <file.kbc>         Run a compiled bytecode artifact\n"
+        "  kite update [--check]        Install the latest release (Windows)\n"
         "  kite --bytecode <file>       Alias for: kite run --bytecode <file>\n"
         "  kite --version               Print the version and exit\n";
     return 2;
+}
+
+int update_command(const std::vector<std::string>& args) {
+    bool check_only = false;
+    bool force = false;
+    for (const auto& arg : args) {
+        if (arg == "--check") check_only = true;
+        else if (arg == "--force") force = true;
+        else return usage();
+    }
+    return kite::run_update(check_only, force);
 }
 
 int print_version() {
@@ -179,6 +192,7 @@ int main(int argc, char* argv[]) {
     if (args[0] == "run") return run_command({args.begin() + 1, args.end()});
     if (args[0] == "build") return build_command({args.begin() + 1, args.end()});
     if (args[0] == "exec") return exec_command({args.begin() + 1, args.end()});
+    if (args[0] == "update") return update_command({args.begin() + 1, args.end()});
     if (args[0] == "--bytecode") return run_command(args);
 
     if (args.size() == 1) return run_source(args[0], false);
