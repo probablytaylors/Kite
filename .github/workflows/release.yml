@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -D KITE_WERROR=ON
+          cmake --build build --config Release
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build installer
+        run: iscc installer\kite.iss
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: kite-setup
+          path: installer/output/kite-setup.exe
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/output/kite-setup.exe

@@ -110,12 +110,13 @@ The installer is written to `installer\output\kite-setup.exe`.
 - [x] Initial source-level standard library modules
 - [x] Bytecode control flow and collection literals/indexing
 - [x] Bytecode artifacts: `kite build` / `kite exec` with a validated on-disk format
+- [x] `%`, compound assignment, `else if`, `for` loops, string escapes
+- [x] Windows installer (Inno Setup)
 - [ ] Richer static inference and user-defined types
 - [ ] Maps mutation and collection methods
 - [ ] Modules and imports
 - [ ] Bytecode function call frames and returns
 - [ ] Standalone executables (bundle a `.kbc` artifact with the runtime)
-- [ ] Windows installer
 - [ ] Tooling such as a REPL, formatter, debugger, and package manager
 
 See [docs/architecture.md](docs/architecture.md),

@@ -17,3 +17,6 @@
 
 # Compiled Kite bytecode artifacts
 *.kbc
+
+# Installer output
+/installer/output/
