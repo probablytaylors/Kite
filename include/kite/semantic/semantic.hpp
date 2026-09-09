@@ -40,6 +40,7 @@ private:
     std::unordered_map<std::string, std::vector<SemanticType>> functions_;
     std::vector<std::string> errors_;
     bool in_function_ = false;
+    int loop_depth_ = 0;
 };
 
 } // namespace kite

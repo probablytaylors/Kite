@@ -20,6 +20,10 @@ const char* token_type_name(TokenType type) {
         return "FN";
     case TokenType::Return:
         return "RETURN";
+    case TokenType::Break:
+        return "BREAK";
+    case TokenType::Continue:
+        return "CONTINUE";
     case TokenType::True:
         return "TRUE";
     case TokenType::False:

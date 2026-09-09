@@ -76,6 +76,11 @@ public:
     const std::vector<std::string>& errors() const;
 
 private:
+    struct LoopContext {
+        std::vector<std::size_t> break_jumps;
+        std::vector<std::size_t> continue_jumps;
+    };
+
     std::size_t add_constant(Value value);
     void emit(OpCode opcode, std::size_t operand = 0);
     void report_error(const std::string& message);
@@ -86,6 +91,7 @@ private:
 
     Chunk chunk_;
     std::unordered_map<std::string, std::size_t> function_indices_;
+    std::vector<LoopContext> loops_;
     std::vector<std::string> errors_;
 };
 

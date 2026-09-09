@@ -12,6 +12,7 @@ namespace kite {
 Chunk BytecodeCompiler::compile(const Program& program) {
     chunk_ = {};
     function_indices_.clear();
+    loops_.clear();
     errors_.clear();
 
     for (const auto& statement : program.statements) {
@@ -129,17 +130,22 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
     case NodeKind::While: {
         const auto& loop = static_cast<const WhileStatement&>(statement);
         const std::size_t start = chunk_.code.size();
+        loops_.push_back({});
         compile_expression(*loop.condition);
         const std::size_t end_jump = emit_jump(OpCode::JumpIfFalse);
         for (const auto& child : loop.body) compile_statement(*child);
         emit(OpCode::Jump, start);
         patch_jump(end_jump, chunk_.code.size());
+        for (const std::size_t jump : loops_.back().continue_jumps) patch_jump(jump, start);
+        for (const std::size_t jump : loops_.back().break_jumps) patch_jump(jump, chunk_.code.size());
+        loops_.pop_back();
         return;
     }
     case NodeKind::For: {
         const auto& loop = static_cast<const ForStatement&>(statement);
         if (loop.initializer != nullptr) compile_statement(*loop.initializer);
         const std::size_t start = chunk_.code.size();
+        loops_.push_back({});
         std::size_t end_jump = 0;
         const bool has_condition = loop.condition != nullptr;
         if (has_condition) {
@@ -147,11 +153,15 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
             end_jump = emit_jump(OpCode::JumpIfFalse);
         }
         for (const auto& child : loop.body) compile_statement(*child);
+        const std::size_t step = chunk_.code.size();
         if (loop.step != nullptr) compile_statement(*loop.step);
         emit(OpCode::Jump, start);
         if (has_condition) {
             patch_jump(end_jump, chunk_.code.size());
         }
+        for (const std::size_t jump : loops_.back().continue_jumps) patch_jump(jump, step);
+        for (const std::size_t jump : loops_.back().break_jumps) patch_jump(jump, chunk_.code.size());
+        loops_.pop_back();
         return;
     }
     case NodeKind::Return: {
@@ -169,6 +179,22 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         }
         compile_expression(value);
         emit(OpCode::Return);
+        return;
+    }
+    case NodeKind::Break: {
+        if (loops_.empty()) {
+            report_error("break outside loop");
+            return;
+        }
+        loops_.back().break_jumps.push_back(emit_jump(OpCode::Jump));
+        return;
+    }
+    case NodeKind::Continue: {
+        if (loops_.empty()) {
+            report_error("continue outside loop");
+            return;
+        }
+        loops_.back().continue_jumps.push_back(emit_jump(OpCode::Jump));
         return;
     }
     case NodeKind::Function:

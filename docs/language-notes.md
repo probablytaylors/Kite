@@ -137,3 +137,16 @@ is a C-style loop; each clause is optional. `return` inside a `while` or `for`
 body stops the loop and the enclosing function.
 
 String literals process the escapes `\n`, `\t`, `\r`, `\0`, `\\`, and `\"`.
+
+## General Scripting Milestone
+
+- `#` starts a line comment.
+- Integer division: two integer operands give a truncated integer; a float
+  operand gives a float. `%` was already integer-for-integers.
+- `xs[i] = v` and `m[k] = v` assign into arrays and maps; a map grows a new key
+  on assignment. `s[i]` reads a one-character string.
+- `break` and `continue` work in `while` and `for` on every execution path and
+  are compile-time errors outside a loop. `continue` still runs the `for` step.
+- The bytecode VM now covers the whole language and calls every built-in
+  through a `CallNative` instruction; `&&` and `||` short-circuit.
+- Optional `: type` / `-> type` annotations; only `kite native` enforces them.

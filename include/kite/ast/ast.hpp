@@ -28,6 +28,8 @@ enum class NodeKind {
     While,
     For,
     Return,
+    Break,
+    Continue,
     Function
 };
 
@@ -210,6 +212,14 @@ struct ReturnStatement final : Statement {
     ReturnStatement() : Statement(NodeKind::Return) {}
 
     std::unique_ptr<Expression> value;
+};
+
+struct BreakStatement final : Statement {
+    BreakStatement() : Statement(NodeKind::Break) {}
+};
+
+struct ContinueStatement final : Statement {
+    ContinueStatement() : Statement(NodeKind::Continue) {}
 };
 
 struct FunctionStatement final : Statement {

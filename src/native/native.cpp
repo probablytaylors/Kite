@@ -2,9 +2,11 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <unordered_map>
 #include <vector>
 
@@ -90,6 +92,7 @@ private:
     std::unordered_map<std::string, Type> scope_;
     std::vector<std::string> errors_;
     Type current_result_ = Type::Void;
+    int loop_depth_ = 0;
 
     void fail(const std::string& message) { errors_.push_back(message); }
 
@@ -115,6 +118,7 @@ private:
 
     void check_function(const FunctionStatement& function) {
         scope_.clear();
+        loop_depth_ = 0;
         const Signature& signature = signatures_[function.name];
         for (std::size_t index = 0; index < function.parameters.size(); ++index) {
             scope_[function.parameters[index]] = signature.parameters[index];
@@ -169,7 +173,9 @@ private:
         case NodeKind::While: {
             const auto& loop = static_cast<const WhileStatement&>(statement);
             if (check_expression(*loop.condition) != Type::Bool) fail("while condition must be bool");
+            ++loop_depth_;
             for (const auto& child : loop.body) check_statement(*child, function);
+            --loop_depth_;
             return;
         }
         case NodeKind::For: {
@@ -178,10 +184,18 @@ private:
             if (loop.condition != nullptr && check_expression(*loop.condition) != Type::Bool) {
                 fail("for condition must be bool");
             }
+            ++loop_depth_;
             if (loop.step != nullptr) check_statement(*loop.step, function);
             for (const auto& child : loop.body) check_statement(*child, function);
+            --loop_depth_;
             return;
         }
+        case NodeKind::Break:
+            if (loop_depth_ == 0) fail("break outside loop");
+            return;
+        case NodeKind::Continue:
+            if (loop_depth_ == 0) fail("continue outside loop");
+            return;
         case NodeKind::Return: {
             const auto& return_statement = static_cast<const ReturnStatement&>(statement);
             const Type value = return_statement.value ? check_expression(*return_statement.value) : Type::Void;
@@ -313,6 +327,28 @@ private:
         out << "}";
     }
 
+    void emit_for_clause(std::ostream& out, const Statement& statement) {
+        switch (statement.kind) {
+        case NodeKind::Let: {
+            const auto& let = static_cast<const LetStatement&>(statement);
+            out << c_type(scope_lookup_for_emit(let)) << ' ' << let.name << " = ";
+            emit_expression(out, *let.initializer);
+            return;
+        }
+        case NodeKind::Assignment: {
+            const auto& assignment = static_cast<const AssignmentStatement&>(statement);
+            out << assignment.name << " = ";
+            emit_expression(out, *assignment.value);
+            return;
+        }
+        case NodeKind::ExpressionStatement:
+            emit_expression(out, *static_cast<const ExpressionStatement&>(statement).expression);
+            return;
+        default:
+            return;
+        }
+    }
+
     void emit_statement(std::ostream& out, const Statement& statement, int depth) {
         switch (statement.kind) {
         case NodeKind::Let: {
@@ -364,21 +400,25 @@ private:
         case NodeKind::For: {
             const auto& loop = static_cast<const ForStatement&>(statement);
             indent(out, depth);
-            out << "{\n";
-            if (loop.initializer != nullptr) emit_statement(out, *loop.initializer, depth + 1);
-            indent(out, depth + 1);
-            out << "while (";
+            out << "for (";
+            if (loop.initializer != nullptr) emit_for_clause(out, *loop.initializer);
+            out << "; ";
             if (loop.condition != nullptr) emit_expression(out, *loop.condition);
-            else out << "1";
-            out << ") {\n";
-            for (const auto& child : loop.body) emit_statement(out, *child, depth + 2);
-            if (loop.step != nullptr) emit_statement(out, *loop.step, depth + 2);
-            indent(out, depth + 1);
-            out << "}\n";
-            indent(out, depth);
-            out << "}\n";
+            out << "; ";
+            if (loop.step != nullptr) emit_for_clause(out, *loop.step);
+            out << ") ";
+            emit_block(out, loop.body, depth);
+            out << '\n';
             return;
         }
+        case NodeKind::Break:
+            indent(out, depth);
+            out << "break;\n";
+            return;
+        case NodeKind::Continue:
+            indent(out, depth);
+            out << "continue;\n";
+            return;
         case NodeKind::Return: {
             const auto& return_statement = static_cast<const ReturnStatement&>(statement);
             indent(out, depth);
@@ -553,11 +593,14 @@ bool compile_native(const Program& program, const std::string& output_path, std:
     }
 
 #if defined(_WIN32)
+    std::error_code path_error;
+    const std::filesystem::path work_dir = std::filesystem::current_path(path_error);
     const std::string script_path = output_path + ".build.bat";
     {
         std::ofstream script(script_path, std::ios::binary);
-        script << "@echo off\r\n"
-               << "set \"VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\"\r\n"
+        script << "@echo off\r\n";
+        if (!path_error) script << "cd /d \"" << work_dir.string() << "\"\r\n";
+        script << "set \"VSWHERE=%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe\"\r\n"
                << "for /f \"usebackq tokens=*\" %%i in (`\"%VSWHERE%\" -latest -property installationPath`) "
                   "do set \"VSPATH=%%i\"\r\n"
                << "if not defined VSPATH ( echo missing-visual-studio & exit /b 2 )\r\n"
@@ -565,7 +608,10 @@ bool compile_native(const Program& program, const std::string& output_path, std:
                << "cl /nologo /O2 /GL /Fe:\"" << output_path << "\" \"" << c_path << "\" "
                   "/Fo:\"" << c_path << ".obj\" /link /LTCG >\"" << c_path << ".log\" 2>&1\r\n";
     }
-    const int status = std::system(("cmd /c \"" + script_path + "\"").c_str());
+    std::error_code script_error;
+    const std::filesystem::path script_full = std::filesystem::absolute(script_path, script_error);
+    const std::string script_command = script_error ? script_path : script_full.string();
+    const int status = std::system(("\"" + script_command + "\"").c_str());
     std::remove(script_path.c_str());
     std::remove((c_path + ".obj").c_str());
     if (status == 2) {

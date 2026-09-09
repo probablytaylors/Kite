@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Language
+
+- `break` and `continue` in `while` and `for` loops, on all execution paths
+  (interpreter, bytecode VM, native). Using either outside a loop is a
+  compile-time error.
+- `#` line comments.
+- Integer division: `int / int` is now integer, matching C/Go/Rust; a float
+  operand still gives a float.
+- Index assignment: `xs[i] = v` and `m[k] = v`. Maps are built by assigning
+  keys.
+- String indexing: `s[i]` gives a one-character string.
+- Optional `: type` annotations on `let` and parameters and `-> type` on
+  functions. The interpreter and VM ignore them; the native compiler requires
+  them.
+
+### Runtime
+
 - Added `kite native <file.kite>`: a typed subset of Kite compiles through C and
   `cl /O2 /GL` to a standalone executable. Functions take annotated parameter
   and return types (`fn f(n: int) -> int`), `let` types are inferred, and the
@@ -9,8 +26,19 @@
   arithmetic, control flow, and recursion are supported; arrays, maps, and the
   dynamic built-ins are not yet. Native `fib(30)` runs within ~1.2x of
   hand-written C and ~12x faster than the bytecode VM.
-- Added the `->` token and optional `: type` annotations to the parser; the
-  interpreter and VM ignore them.
+- A shared builtin registry used by both the interpreter and the VM through a
+  `CallNative` opcode, so builtins no longer force the VM back to the
+  interpreter. New: `str`, `int`, `float`, `split`, `join`, `substring`,
+  `contains`, `index_of`, `replace`, `trim`, `keys`, `has`, `remove`, `ord`,
+  `chr`, `push`, `input`, `args`, `env`.
+- The VM short-circuits `&&` / `||`.
+
+### Fixed
+
+- `kite native` never invoked its build script when the shell disabled
+  current-directory executable lookup (`NoDefaultCurrentDirectoryInExePath`);
+  the script is now run by absolute path and pins its working directory.
+- The semantic analyzer rejected `m[k]` when `k` had an unknown type.
 
 ## 0.2.0 - 2026-09-09
 

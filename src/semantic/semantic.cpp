@@ -42,6 +42,7 @@ bool SemanticAnalyzer::analyze(const Program& program) {
     scopes_.emplace_back();
     functions_.clear();
     in_function_ = false;
+    loop_depth_ = 0;
     for (const auto& statement : program.statements) {
         if (const auto* function = dynamic_cast<const FunctionStatement*>(statement.get())) {
             functions_[function->name] = std::vector<SemanticType>(function->parameters.size(), SemanticType::Unknown);
@@ -120,7 +121,11 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
     }
     if (const auto* loop = dynamic_cast<const WhileStatement*>(&statement)) {
         if (!is_condition(analyze_expression(*loop->condition))) report_error("while condition must be boolean");
-        scopes_.emplace_back(); analyze_block(loop->body); scopes_.pop_back();
+        scopes_.emplace_back();
+        ++loop_depth_;
+        analyze_block(loop->body);
+        --loop_depth_;
+        scopes_.pop_back();
         return;
     }
     if (const auto* loop = dynamic_cast<const ForStatement*>(&statement)) {
@@ -129,19 +134,32 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         if (loop->condition != nullptr && !is_condition(analyze_expression(*loop->condition))) {
             report_error("for condition must be boolean");
         }
+        ++loop_depth_;
         if (loop->step != nullptr) analyze_statement(*loop->step);
         analyze_block(loop->body);
+        --loop_depth_;
         scopes_.pop_back();
+        return;
+    }
+    if (dynamic_cast<const BreakStatement*>(&statement)) {
+        if (loop_depth_ == 0) report_error("break outside loop");
+        return;
+    }
+    if (dynamic_cast<const ContinueStatement*>(&statement)) {
+        if (loop_depth_ == 0) report_error("continue outside loop");
         return;
     }
     if (const auto* function = dynamic_cast<const FunctionStatement*>(&statement)) {
         const bool previous = in_function_;
+        const int previous_loop_depth = loop_depth_;
         in_function_ = true;
+        loop_depth_ = 0;
         scopes_.emplace_back();
         for (const auto& parameter : function->parameters) scopes_.back()[parameter] = SemanticType::Unknown;
         analyze_block(function->body);
         scopes_.pop_back();
         in_function_ = previous;
+        loop_depth_ = previous_loop_depth;
         return;
     }
     if (const auto* return_statement = dynamic_cast<const ReturnStatement*>(&statement)) {

@@ -26,6 +26,7 @@ Kite currently supports:
 - Booleans: `true`, `false`
 - Strings: `"Kite"`
 - Arrays: `[1, 2, 3]`
+- Maps: `{"name": "Kite"}`
 
 ## Variables
 
@@ -55,9 +56,10 @@ Arithmetic operators:
 ```
 
 Unary minus is supported for numeric expressions. String values can be joined
-with `+`. `*`, `/`, and `%` bind more tightly than `+` and `-`. Division always
-produces a floating-point result. `%` is integer remainder when both operands
-are integers and `fmod` otherwise; a zero right operand is a runtime error.
+with `+`. `*`, `/`, and `%` bind more tightly than `+` and `-`. Division of two
+integers truncates toward zero and produces an integer; a float operand makes
+the result a float. `%` is integer remainder when both operands are integers and
+`fmod` otherwise; a zero right operand is a runtime error.
 
 Comparison operators:
 
@@ -86,23 +88,33 @@ print(values[1])
 ```
 
 Indexes are zero-based and must be integers. Indexing an invalid value or an
-out-of-range element is a runtime error. Array mutation is not implemented yet.
+out-of-range element is a runtime error. An element can be replaced in place:
+
+```kite
+let values = [10, 20, 30]
+values[1] = 25
+```
 
 ## Maps
-
-Maps use string keys and support read-only lookup:
 
 ```kite
 let user = {"name": "Kite", "version": 1}
 print(user["name"])
+user["version"] = 2
 ```
 
-Map keys must be strings. Missing keys and invalid key types are runtime errors.
+Map keys must be strings. Assigning a key that does not exist adds it. Reading a
+missing key or using a non-string key is a runtime error.
 
 ## Strings
 
 String literals are double-quoted and support the escapes `\n`, `\t`, `\r`,
-`\0`, `\\`, and `\"`.
+`\0`, `\\`, and `\"`. Indexing a string with an integer returns a
+one-character string.
+
+## Comments
+
+A `#` begins a comment that runs to the end of the line.
 
 ## Conditions And Loops
 
@@ -130,9 +142,12 @@ three may be omitted.
 
 Conditions must evaluate to booleans.
 
+`break` leaves the nearest enclosing loop and `continue` skips to its next
+iteration (running the `for` step). Both are compile-time errors outside a loop.
+
 Before execution, semantic analysis checks identifiers, assignment targets,
-condition types, collection index types, return placement, and concrete
-arithmetic operands.
+condition types, collection index types, `return`/`break`/`continue` placement,
+and concrete arithmetic operands.
 
 ## Functions
 
@@ -146,16 +161,32 @@ print(add(2, 3))
 
 Functions support parameters, local scopes, return values, and recursion.
 
+Parameters and `let` bindings may carry a `: type` annotation and functions a
+`-> type` return annotation (`int`, `float`, `bool`, `string`). The interpreter
+and bytecode VM ignore them; `kite native` requires them.
+
 ## Built-ins
 
-The current built-in functions are:
+Strings and collections:
 
 - `print(...)`: writes values separated by spaces and ends with a newline.
-- `len(value)`: returns the size of a string, array, or map.
-- `upper(value)`: converts a string to uppercase.
-- `lower(value)`: converts a string to lowercase.
-- `read_file(path)`: reads a file as a string.
-- `write_file(path, content)`: writes a string and returns `true`.
+- `len(value)`: size of a string, array, or map.
+- `type_of(value)`: `boolean`, `integer`, `float`, `string`, `array`, or `map`.
+- `str(value)`, `int(value)`, `float(value)`: convert between scalar types.
+- `upper(s)`, `lower(s)`, `trim(s)`: case and whitespace.
+- `substring(s, start, end)`, `replace(s, from, to)`.
+- `contains(s, part)`, `index_of(s, part)`: substring search.
+- `split(s, separator)`, `join(array, separator)`.
+- `ord(s)`, `chr(code)`: character/codepoint conversion.
+- `append(array, value)`, `push(array, value)`, `pop(array)`.
+- `keys(map)`, `has(map, key)`, `remove(map, key)`.
+
+Environment and I/O:
+
+- `read_file(path)`, `write_file(path, content)`.
+- `input(prompt)`: reads a line from standard input.
+- `args()`: the program arguments after the script name.
+- `env(name)`: an environment variable, or an empty string.
 
 ## Math Functions
 
@@ -183,12 +214,6 @@ inputs. Invalid arguments and domain errors are reported at runtime.
 
 Modules and concurrency APIs are planned but not implemented yet.
 
-Runtime helpers include:
-
-- `type_of(value)`: returns `boolean`, `integer`, `float`, `string`, `array`, or `map`.
-- `append(array, value)`: mutates an array and returns it.
-- `pop(array)`: removes and returns the last array element.
-
 ## Standard Library
 
 The `std/` directory contains the first source-level library modules:
@@ -202,13 +227,13 @@ They are valid standalone Kite source files and wrap the current built-ins.
 Imports are not implemented yet, so programs must not assume these modules are
 available automatically.
 
-The bytecode compiler currently supports literals, variables, assignment,
-arithmetic, comparisons, boolean logic, unary operators, string concatenation,
-`print`, `if`/`else`, `while`, arrays, maps, and indexing. User-defined
-functions and math/file built-ins still run through the tree-walking
-interpreter until bytecode call frames and native-call instructions are added.
+The bytecode compiler covers the whole language: literals, variables,
+assignment, arithmetic, comparisons, short-circuit boolean logic, unary
+operators, string operations, `print`, `if`/`else`, `while`, `for`,
+`break`/`continue`, arrays, maps, indexing, index assignment, user-defined
+functions, and every built-in (through a native-call instruction).
 
 `kite build` produces a `.kbc` artifact holding the constant pool and
 instruction stream; `kite exec` loads and runs one after validating that every
-operand is in range. When a program uses only the supported subset, the
-bytecode VM produces output identical to the interpreter.
+operand is in range. The bytecode VM produces output identical to the
+interpreter.

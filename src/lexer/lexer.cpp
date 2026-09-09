@@ -74,6 +74,10 @@ Token Lexer::scan_identifier_or_keyword() {
         type = TokenType::Fn;
     } else if (lexeme == "return") {
         type = TokenType::Return;
+    } else if (lexeme == "break") {
+        type = TokenType::Break;
+    } else if (lexeme == "continue") {
+        type = TokenType::Continue;
     } else if (lexeme == "true") {
         type = TokenType::True;
     } else if (lexeme == "false") {

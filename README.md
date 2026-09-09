@@ -51,13 +51,16 @@ if (total / len(scores) >= 80) {
 }
 ```
 
-Numbers are 64-bit integers or doubles; `/` always gives a double, `%` is
-remainder. Strings take `+` and the `\n \t \r \0 \\ \"` escapes. There are
-arrays, string-keyed maps, `if`/`else if`/`else`, `while` and `for`, recursion,
-and short-circuiting `&&` / `||`.
+Numbers are 64-bit integers or doubles; `int / int` truncates to an integer, a
+float operand makes it a float, `%` is remainder. Strings take `+`, integer
+indexing, and the `\n \t \r \0 \\ \"` escapes. There are arrays and string-keyed
+maps (both assignable by index), `if`/`else if`/`else`, `while` and `for` with
+`break` / `continue`, recursion, short-circuiting `&&` / `||`, and `#` comments.
 
-Built-ins: `print`, `len`, `upper`, `lower`, `type_of`, `append`, `pop`,
-`read_file`, `write_file`, and the usual math functions (`sqrt`, `pow`, trig,
+Built-ins: `print`, `len`, `type_of`, `str`/`int`/`float`, `upper`, `lower`,
+`trim`, `split`, `join`, `substring`, `replace`, `contains`, `index_of`,
+`append`, `push`, `pop`, `keys`, `has`, `remove`, `read_file`, `write_file`,
+`input`, `args`, `env`, and the usual math functions (`sqrt`, `pow`, trig,
 `floor`, `min`, `max`, and so on). The `std/` directory has a few more helpers
 written in Kite itself.
 
@@ -113,10 +116,11 @@ docs/                  architecture and language notes
 ## Roadmap
 
 Done: the front end and semantic pass, the interpreter, the bytecode compiler
-and VM, `.kbc` artifacts, and the Windows installer.
+and VM (the full dynamic language, including function call frames), `.kbc`
+artifacts, native compilation of a typed subset, and the Windows installer.
 
-Next: function call frames in the VM, map mutation, an import system, and
-further out, a static type system with native compilation.
+Next: an import system, user-defined types, error handling, and widening the
+native compiler to cover strings and collections.
 
 ## License
 

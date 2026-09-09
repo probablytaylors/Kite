@@ -17,6 +17,7 @@ bool Interpreter::execute(const Program& program) {
     frame_base_ = 0;
     functions_.clear();
     return_pending_ = false;
+    loop_flow_ = LoopFlow::None;
     for (const auto& statement : program.statements) {
         if (statement->kind == NodeKind::Function) {
             const auto* function = static_cast<const FunctionStatement*>(statement.get());
@@ -31,7 +32,7 @@ bool Interpreter::execute_block(const std::vector<std::unique_ptr<Statement>>& s
         if (!execute_statement(*statement)) {
             return false;
         }
-        if (return_pending_) {
+        if (return_pending_ || loop_flow_ != LoopFlow::None) {
             break;
         }
     }
@@ -152,6 +153,11 @@ bool Interpreter::execute_statement(const Statement& statement) {
             if (return_pending_) {
                 return true;
             }
+            if (loop_flow_ == LoopFlow::Break) {
+                loop_flow_ = LoopFlow::None;
+                return true;
+            }
+            loop_flow_ = LoopFlow::None;
         }
     }
 
@@ -180,6 +186,11 @@ bool Interpreter::execute_statement(const Statement& statement) {
             if (return_pending_) {
                 return true;
             }
+            if (loop_flow_ == LoopFlow::Break) {
+                loop_flow_ = LoopFlow::None;
+                return true;
+            }
+            loop_flow_ = LoopFlow::None;
             if (loop.step != nullptr && !execute_statement(*loop.step)) {
                 return false;
             }
@@ -187,6 +198,14 @@ bool Interpreter::execute_statement(const Statement& statement) {
     }
 
     case NodeKind::Function:
+        return true;
+
+    case NodeKind::Break:
+        loop_flow_ = LoopFlow::Break;
+        return true;
+
+    case NodeKind::Continue:
+        loop_flow_ = LoopFlow::Continue;
         return true;
 
     case NodeKind::Return: {

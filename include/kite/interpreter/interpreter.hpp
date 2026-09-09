@@ -19,6 +19,8 @@ public:
     const std::vector<std::string>& errors() const;
 
 private:
+    enum class LoopFlow { None, Break, Continue };
+
     bool execute_statement(const Statement& statement);
     bool execute_block(const std::vector<std::unique_ptr<Statement>>& statements);
     bool execute_function(const FunctionStatement& function, std::size_t base, std::size_t argument_count, Value& value);
@@ -42,6 +44,7 @@ private:
     std::size_t frame_base_ = 0;
     std::unordered_map<std::string, const FunctionStatement*> functions_;
     bool return_pending_ = false;
+    LoopFlow loop_flow_ = LoopFlow::None;
     Value return_value_;
 };
 

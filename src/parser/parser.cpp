@@ -105,6 +105,14 @@ std::unique_ptr<Statement> Parser::parse_statement() {
     if (current_.type == TokenType::Return) {
         return parse_return_statement();
     }
+    if (current_.type == TokenType::Break) {
+        advance();
+        return std::make_unique<BreakStatement>();
+    }
+    if (current_.type == TokenType::Continue) {
+        advance();
+        return std::make_unique<ContinueStatement>();
+    }
 
     return parse_assignment_or_expression_statement();
 }

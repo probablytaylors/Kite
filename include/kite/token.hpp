@@ -14,6 +14,8 @@ enum class TokenType {
     For,
     Fn,
     Return,
+    Break,
+    Continue,
     True,
     False,
     Identifier,
