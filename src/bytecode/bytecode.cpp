@@ -31,11 +31,31 @@ double as_number(const BytecodeValue& value) {
 
 Chunk BytecodeCompiler::compile(const Program& program) {
     chunk_ = {};
+    function_indices_.clear();
     errors_.clear();
+
     for (const auto& statement : program.statements) {
-        compile_statement(*statement);
+        if (statement->kind != NodeKind::Function) continue;
+        const auto& function = static_cast<const FunctionStatement&>(*statement);
+        function_indices_[function.name] = chunk_.functions.size();
+        chunk_.functions.push_back({0, static_cast<std::uint32_t>(function.parameters.size()),
+            static_cast<std::uint32_t>(function.frame_size)});
+    }
+
+    for (const auto& statement : program.statements) {
+        if (statement->kind != NodeKind::Function) compile_statement(*statement);
     }
     emit(OpCode::Halt);
+
+    for (const auto& statement : program.statements) {
+        if (statement->kind != NodeKind::Function) continue;
+        const auto& function = static_cast<const FunctionStatement&>(*statement);
+        chunk_.functions[function_indices_[function.name]].address = chunk_.code.size();
+        for (const auto& child : function.body) compile_statement(*child);
+        emit(OpCode::Constant, add_constant(std::string()));
+        emit(OpCode::Return);
+    }
+
     return chunk_;
 }
 
@@ -67,56 +87,69 @@ void BytecodeCompiler::report_error(const std::string& message) {
 }
 
 void BytecodeCompiler::compile_statement(const Statement& statement) {
-    if (const auto* let = dynamic_cast<const LetStatement*>(&statement)) {
-        compile_expression(*let->initializer);
-        emit(OpCode::Store, add_constant(let->name));
+    switch (statement.kind) {
+    case NodeKind::Let: {
+        const auto& let = static_cast<const LetStatement&>(statement);
+        compile_expression(*let.initializer);
+        if (let.slot >= 0) {
+            emit(OpCode::StoreLocal, static_cast<std::size_t>(let.slot));
+        } else {
+            emit(OpCode::Store, add_constant(let.name));
+        }
         return;
     }
-    if (const auto* assignment = dynamic_cast<const AssignmentStatement*>(&statement)) {
-        compile_expression(*assignment->value);
-        emit(OpCode::Store, add_constant(assignment->name));
+    case NodeKind::Assignment: {
+        const auto& assignment = static_cast<const AssignmentStatement&>(statement);
+        compile_expression(*assignment.value);
+        if (assignment.slot >= 0) {
+            emit(OpCode::StoreLocal, static_cast<std::size_t>(assignment.slot));
+        } else {
+            emit(OpCode::Store, add_constant(assignment.name));
+        }
         return;
     }
-    if (const auto* expression = dynamic_cast<const ExpressionStatement*>(&statement)) {
-        compile_expression(*expression->expression);
+    case NodeKind::ExpressionStatement:
+        compile_expression(*static_cast<const ExpressionStatement&>(statement).expression);
         emit(OpCode::Pop);
         return;
-    }
-    if (const auto* conditional = dynamic_cast<const IfStatement*>(&statement)) {
-        compile_expression(*conditional->condition);
+    case NodeKind::If: {
+        const auto& conditional = static_cast<const IfStatement&>(statement);
+        compile_expression(*conditional.condition);
         const std::size_t false_jump = emit_jump(OpCode::JumpIfFalse);
         emit(OpCode::Pop);
-        for (const auto& child : conditional->then_branch) compile_statement(*child);
+        for (const auto& child : conditional.then_branch) compile_statement(*child);
         const std::size_t end_jump = emit_jump(OpCode::Jump);
         patch_jump(false_jump, chunk_.code.size());
         emit(OpCode::Pop);
-        for (const auto& child : conditional->else_branch) compile_statement(*child);
+        for (const auto& child : conditional.else_branch) compile_statement(*child);
         patch_jump(end_jump, chunk_.code.size());
         return;
     }
-    if (const auto* loop = dynamic_cast<const WhileStatement*>(&statement)) {
+    case NodeKind::While: {
+        const auto& loop = static_cast<const WhileStatement&>(statement);
         const std::size_t start = chunk_.code.size();
-        compile_expression(*loop->condition);
+        compile_expression(*loop.condition);
         const std::size_t end_jump = emit_jump(OpCode::JumpIfFalse);
         emit(OpCode::Pop);
-        for (const auto& child : loop->body) compile_statement(*child);
+        for (const auto& child : loop.body) compile_statement(*child);
         emit(OpCode::Jump, start);
         patch_jump(end_jump, chunk_.code.size());
         emit(OpCode::Pop);
         return;
     }
-    if (const auto* loop = dynamic_cast<const ForStatement*>(&statement)) {
-        if (loop->initializer != nullptr) compile_statement(*loop->initializer);
+    case NodeKind::For: {
+        const auto& loop = static_cast<const ForStatement&>(statement);
+        if (loop.initializer != nullptr) compile_statement(*loop.initializer);
         const std::size_t start = chunk_.code.size();
         std::size_t end_jump = 0;
-        bool has_condition = loop->condition != nullptr;
+        const bool has_condition = loop.condition != nullptr;
         if (has_condition) {
-            compile_expression(*loop->condition);
+            compile_expression(*loop.condition);
             end_jump = emit_jump(OpCode::JumpIfFalse);
             emit(OpCode::Pop);
         }
-        for (const auto& child : loop->body) compile_statement(*child);
-        if (loop->step != nullptr) compile_statement(*loop->step);
+        for (const auto& child : loop.body) compile_statement(*child);
+        if (loop.step != nullptr) compile_statement(*loop.step);
         emit(OpCode::Jump, start);
         if (has_condition) {
             patch_jump(end_jump, chunk_.code.size());
@@ -124,58 +157,76 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         }
         return;
     }
-    report_error("bytecode compiler does not support this statement yet");
+    case NodeKind::Return: {
+        const auto& return_statement = static_cast<const ReturnStatement&>(statement);
+        compile_expression(*return_statement.value);
+        emit(OpCode::Return);
+        return;
+    }
+    case NodeKind::Function:
+        return;
+    default:
+        report_error("bytecode compiler does not support this statement yet");
+        return;
+    }
 }
 
 void BytecodeCompiler::compile_expression(const Expression& expression) {
-    if (const auto* boolean = dynamic_cast<const BooleanExpression*>(&expression)) {
-        emit(OpCode::Constant, add_constant(boolean->value));
+    switch (expression.kind) {
+    case NodeKind::Boolean:
+        emit(OpCode::Constant, add_constant(static_cast<const BooleanExpression&>(expression).value));
+        return;
+    case NodeKind::Integer:
+        emit(OpCode::Constant, add_constant(static_cast<const IntegerExpression&>(expression).value));
+        return;
+    case NodeKind::Float:
+        emit(OpCode::Constant, add_constant(static_cast<const FloatExpression&>(expression).value));
+        return;
+    case NodeKind::String:
+        emit(OpCode::Constant, add_constant(static_cast<const StringExpression&>(expression).value));
+        return;
+    case NodeKind::Array: {
+        const auto& array = static_cast<const ArrayExpression&>(expression);
+        for (const auto& element : array.elements) compile_expression(*element);
+        emit(OpCode::MakeArray, array.elements.size());
         return;
     }
-    if (const auto* integer = dynamic_cast<const IntegerExpression*>(&expression)) {
-        emit(OpCode::Constant, add_constant(integer->value));
-        return;
-    }
-    if (const auto* floating_point = dynamic_cast<const FloatExpression*>(&expression)) {
-        emit(OpCode::Constant, add_constant(floating_point->value));
-        return;
-    }
-    if (const auto* string = dynamic_cast<const StringExpression*>(&expression)) {
-        emit(OpCode::Constant, add_constant(string->value));
-        return;
-    }
-    if (const auto* array = dynamic_cast<const ArrayExpression*>(&expression)) {
-        for (const auto& element : array->elements) compile_expression(*element);
-        emit(OpCode::MakeArray, array->elements.size());
-        return;
-    }
-    if (const auto* map = dynamic_cast<const MapExpression*>(&expression)) {
-        for (const auto& entry : map->entries) {
+    case NodeKind::Map: {
+        const auto& map = static_cast<const MapExpression&>(expression);
+        for (const auto& entry : map.entries) {
             compile_expression(*entry.first);
             compile_expression(*entry.second);
         }
-        emit(OpCode::MakeMap, map->entries.size());
+        emit(OpCode::MakeMap, map.entries.size());
         return;
     }
-    if (const auto* index = dynamic_cast<const IndexExpression*>(&expression)) {
-        compile_expression(*index->target);
-        compile_expression(*index->index);
+    case NodeKind::Index: {
+        const auto& index = static_cast<const IndexExpression&>(expression);
+        compile_expression(*index.target);
+        compile_expression(*index.index);
         emit(OpCode::Index);
         return;
     }
-    if (const auto* identifier = dynamic_cast<const IdentifierExpression*>(&expression)) {
-        emit(OpCode::Load, add_constant(identifier->name));
+    case NodeKind::Identifier: {
+        const auto& identifier = static_cast<const IdentifierExpression&>(expression);
+        if (identifier.slot >= 0) {
+            emit(OpCode::LoadLocal, static_cast<std::size_t>(identifier.slot));
+        } else {
+            emit(OpCode::Load, add_constant(identifier.name));
+        }
         return;
     }
-    if (const auto* unary = dynamic_cast<const UnaryExpression*>(&expression)) {
-        compile_expression(*unary->operand);
-        emit(unary->operator_type == UnaryOperator::Negate ? OpCode::Negate : OpCode::Not);
+    case NodeKind::Unary: {
+        const auto& unary = static_cast<const UnaryExpression&>(expression);
+        compile_expression(*unary.operand);
+        emit(unary.operator_type == UnaryOperator::Negate ? OpCode::Negate : OpCode::Not);
         return;
     }
-    if (const auto* binary = dynamic_cast<const BinaryExpression*>(&expression)) {
-        compile_expression(*binary->left);
-        compile_expression(*binary->right);
-        switch (binary->operator_type) {
+    case NodeKind::Binary: {
+        const auto& binary = static_cast<const BinaryExpression&>(expression);
+        compile_expression(*binary.left);
+        compile_expression(*binary.right);
+        switch (binary.operator_type) {
         case BinaryOperator::Add: emit(OpCode::Add); break;
         case BinaryOperator::Subtract: emit(OpCode::Subtract); break;
         case BinaryOperator::Multiply: emit(OpCode::Multiply); break;
@@ -192,20 +243,31 @@ void BytecodeCompiler::compile_expression(const Expression& expression) {
         }
         return;
     }
-    if (const auto* call = dynamic_cast<const CallExpression*>(&expression)) {
-        const auto* callee = dynamic_cast<const IdentifierExpression*>(call->callee.get());
-        if (callee == nullptr || callee->name != "print") {
-            report_error("bytecode compiler currently supports only print calls");
+    case NodeKind::Call: {
+        const auto& call = static_cast<const CallExpression&>(expression);
+        if (call.callee->kind != NodeKind::Identifier) {
+            report_error("bytecode compiler supports only named calls");
             return;
         }
-        for (const auto& argument : call->arguments) {
-            compile_expression(*argument);
+        const auto& name = static_cast<const IdentifierExpression&>(*call.callee).name;
+        if (const auto found = function_indices_.find(name); found != function_indices_.end()) {
+            for (const auto& argument : call.arguments) compile_expression(*argument);
+            emit(OpCode::Call, found->second);
+            return;
         }
-        emit(OpCode::Print, call->arguments.size());
-        emit(OpCode::Constant, add_constant(std::string()));
+        if (name == "print") {
+            for (const auto& argument : call.arguments) compile_expression(*argument);
+            emit(OpCode::Print, call.arguments.size());
+            emit(OpCode::Constant, add_constant(std::string()));
+            return;
+        }
+        report_error("bytecode compiler does not support the call to '" + name + "' yet");
         return;
     }
-    report_error("bytecode compiler does not support this expression yet");
+    default:
+        report_error("bytecode compiler does not support this expression yet");
+        return;
+    }
 }
 
 BytecodeVm::BytecodeVm(std::ostream& output) : output_(output) {}
@@ -217,6 +279,9 @@ bool BytecodeVm::is_truthy(const BytecodeValue& value) const {
 
 bool BytecodeVm::run(const Chunk& chunk) {
     stack_.clear();
+    stack_.reserve(8192);
+    frames_.clear();
+    base_ = 0;
     variables_.clear();
     errors_.clear();
     for (std::size_t instruction_pointer = 0; instruction_pointer < chunk.code.size(); ++instruction_pointer) {
@@ -225,6 +290,42 @@ bool BytecodeVm::run(const Chunk& chunk) {
         case OpCode::Constant:
             stack_.push_back(chunk.constants[instruction.operand]);
             break;
+        case OpCode::LoadLocal: {
+            BytecodeValue local = stack_[base_ + instruction.operand];
+            stack_.push_back(std::move(local));
+            break;
+        }
+        case OpCode::StoreLocal:
+            if (stack_.empty()) { report_error("stack underflow on store"); return false; }
+            stack_[base_ + instruction.operand] = std::move(stack_.back());
+            stack_.pop_back();
+            break;
+        case OpCode::Call: {
+            if (instruction.operand >= chunk.functions.size()) {
+                report_error("invalid call target");
+                return false;
+            }
+            const FunctionInfo& function = chunk.functions[instruction.operand];
+            if (stack_.size() < function.arity) { report_error("stack underflow on call"); return false; }
+            const std::size_t new_base = stack_.size() - function.arity;
+            stack_.resize(new_base + function.frame_size);
+            frames_.push_back({instruction_pointer, base_});
+            base_ = new_base;
+            instruction_pointer = function.address - 1;
+            break;
+        }
+        case OpCode::Return: {
+            if (frames_.empty()) { report_error("return outside function"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on return"); return false; }
+            BytecodeValue result = std::move(stack_.back());
+            stack_.pop_back();
+            stack_.resize(base_);
+            stack_.push_back(std::move(result));
+            instruction_pointer = frames_.back().return_ip;
+            base_ = frames_.back().base;
+            frames_.pop_back();
+            break;
+        }
         case OpCode::Load: {
             const auto& name = std::get<std::string>(chunk.constants[instruction.operand]);
             const auto variable = variables_.find(name);
@@ -471,9 +572,26 @@ bool operand_is_count(OpCode opcode) {
     return opcode == OpCode::Print || opcode == OpCode::MakeArray || opcode == OpCode::MakeMap;
 }
 
+bool operand_is_slot(OpCode opcode) {
+    return opcode == OpCode::LoadLocal || opcode == OpCode::StoreLocal;
+}
+
+constexpr std::uint64_t kMaxFunctions = 100'000ull;
+constexpr std::uint64_t kMaxFrameSlots = 100'000ull;
+
 } // namespace
 
 bool validate_chunk(const Chunk& chunk, std::string& error) {
+    for (const auto& function : chunk.functions) {
+        if (function.address >= chunk.code.size()) {
+            error = "function address out of range";
+            return false;
+        }
+        if (function.frame_size > kMaxFrameSlots || function.arity > function.frame_size) {
+            error = "invalid function frame";
+            return false;
+        }
+    }
     for (std::size_t index = 0; index < chunk.code.size(); ++index) {
         const Instruction instruction = chunk.code[index];
         if (static_cast<std::uint8_t>(instruction.opcode) > static_cast<std::uint8_t>(OpCode::Halt)) {
@@ -493,6 +611,16 @@ bool validate_chunk(const Chunk& chunk, std::string& error) {
         } else if (operand_is_jump_target(instruction.opcode)) {
             if (instruction.operand > chunk.code.size()) {
                 error = "jump target out of range at instruction " + std::to_string(index);
+                return false;
+            }
+        } else if (instruction.opcode == OpCode::Call) {
+            if (instruction.operand >= chunk.functions.size()) {
+                error = "call target out of range at instruction " + std::to_string(index);
+                return false;
+            }
+        } else if (operand_is_slot(instruction.opcode)) {
+            if (instruction.operand >= kMaxFrameSlots) {
+                error = "frame slot out of range at instruction " + std::to_string(index);
                 return false;
             }
         } else if (!operand_is_count(instruction.opcode) && instruction.operand != 0) {
@@ -529,6 +657,15 @@ bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& err
         write_binary(output, opcode);
         write_binary(output, operand);
     }
+
+    const std::uint64_t functions = chunk.functions.size();
+    write_binary(output, functions);
+    for (const auto& function : chunk.functions) {
+        write_binary(output, static_cast<std::uint64_t>(function.address));
+        write_binary(output, function.arity);
+        write_binary(output, function.frame_size);
+    }
+
     if (!output) { error = "could not write bytecode file: " + path; return false; }
     return true;
 }
@@ -578,8 +715,24 @@ bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
         instruction = {static_cast<OpCode>(opcode), static_cast<std::size_t>(operand)};
     }
 
+    std::uint64_t functions = 0;
+    if (!read_binary(input, functions) || functions > kMaxFunctions) {
+        error = "invalid bytecode function table";
+        return false;
+    }
+    chunk.functions.resize(static_cast<std::size_t>(functions));
+    for (auto& function : chunk.functions) {
+        std::uint64_t address = 0;
+        if (!read_binary(input, address) || !read_binary(input, function.arity) ||
+            !read_binary(input, function.frame_size)) {
+            error = "truncated bytecode function table";
+            return false;
+        }
+        function.address = static_cast<std::size_t>(address);
+    }
+
     input.peek();
-    if (!input.eof()) { error = "trailing data after bytecode instruction stream"; return false; }
+    if (!input.eof()) { error = "trailing data after bytecode function table"; return false; }
 
     return validate_chunk(chunk, error);
 }

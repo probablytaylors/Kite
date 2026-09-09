@@ -24,6 +24,8 @@ enum class OpCode {
     Constant,
     Load,
     Store,
+    LoadLocal,
+    StoreLocal,
     Add,
     Subtract,
     Multiply,
@@ -46,6 +48,8 @@ enum class OpCode {
     MakeArray,
     MakeMap,
     Index,
+    Call,
+    Return,
     Halt
 };
 
@@ -54,9 +58,16 @@ struct Instruction {
     std::size_t operand = 0;
 };
 
+struct FunctionInfo {
+    std::size_t address = 0;
+    std::uint32_t arity = 0;
+    std::uint32_t frame_size = 0;
+};
+
 struct Chunk {
     std::vector<BytecodeValue> constants;
     std::vector<Instruction> code;
+    std::vector<FunctionInfo> functions;
 };
 
 class BytecodeCompiler {
@@ -74,6 +85,7 @@ private:
     void patch_jump(std::size_t instruction, std::size_t target);
 
     Chunk chunk_;
+    std::unordered_map<std::string, std::size_t> function_indices_;
     std::vector<std::string> errors_;
 };
 
@@ -85,18 +97,25 @@ public:
     const std::vector<std::string>& errors() const;
 
 private:
+    struct Frame {
+        std::size_t return_ip;
+        std::size_t base;
+    };
+
     bool binary_operation(OpCode opcode);
     bool is_truthy(const BytecodeValue& value) const;
     void report_error(const std::string& message);
 
     std::ostream& output_;
     std::vector<BytecodeValue> stack_;
+    std::vector<Frame> frames_;
+    std::size_t base_ = 0;
     std::unordered_map<std::string, BytecodeValue> variables_;
     std::vector<std::string> errors_;
 };
 
 inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};
-inline constexpr std::uint32_t kBytecodeFormatVersion = 3;
+inline constexpr std::uint32_t kBytecodeFormatVersion = 4;
 
 bool validate_chunk(const Chunk& chunk, std::string& error);
 bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error);
