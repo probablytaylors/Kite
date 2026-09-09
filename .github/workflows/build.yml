@@ -24,8 +24,16 @@ jobs:
         shell: pwsh
         run: |
           $exe = "build/${{ matrix.config }}/kite.exe"
-          & $exe build examples/calculator.kite -o calculator.kbc
-          $artifact = & $exe exec calculator.kbc
-          $direct = & $exe run examples/calculator.kite
-          if ($artifact -ne $direct) { throw "artifact output '$artifact' != interpreter output '$direct'" }
-          foreach ($sample in Get-ChildItem examples/*.kite) { & $exe run $sample.FullName | Out-Null }
+          @'
+          fn fib(n) { if (n < 2) { return n } return fib(n - 1) + fib(n - 2) }
+          let sum = 0
+          for (let i = 0; i < 10; i += 1) { sum += fib(i) }
+          print(sum)
+          '@ | Set-Content smoke.kite
+          & $exe build smoke.kite -o smoke.kbc
+          $tree = & $exe run smoke.kite
+          $vm = & $exe run --bytecode smoke.kite
+          $artifact = & $exe exec smoke.kbc
+          if ($tree -ne "88" -or $vm -ne "88" -or $artifact -ne "88") {
+            throw "smoke test mismatch: tree=$tree vm=$vm artifact=$artifact"
+          }

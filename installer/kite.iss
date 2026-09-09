@@ -35,7 +35,6 @@ Name: "associate"; Description: "Associate .kite files with Kite"
 [Files]
 Source: "..\build\Release\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "kite.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\examples\*"; DestDir: "{app}\examples"; Flags: ignoreversion recursesubdirs
 Source: "..\std\*"; DestDir: "{app}\std"; Flags: ignoreversion recursesubdirs
 Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion

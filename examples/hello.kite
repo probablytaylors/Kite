@@ -1,5 +1,0 @@
-let message = "Hello, Kite!"
-let count = 42
-
-print(message)
-print(count)

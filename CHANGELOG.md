@@ -27,7 +27,6 @@
 
 - `kite update` — downloads the latest release, verifies its checksum, and runs
   the installer in place (Windows).
-- `examples/stackvm.kite`, a stack machine with a call stack written in Kite.
 
 ## 0.1.0 - 2026-09-08
 

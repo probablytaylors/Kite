@@ -1,5 +1,0 @@
-let radius = 5
-let area = 3.141592653589793 * pow(radius, 2)
-
-print(sqrt(pow(radius, 2)))
-print(area)

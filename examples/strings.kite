@@ -1,4 +1,0 @@
-let greeting = "Hello, " + "Kite"
-print(greeting)
-print(upper(greeting))
-print(len(greeting))

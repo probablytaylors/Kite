@@ -24,7 +24,7 @@ It puts `kite.exe` in `Program Files`, adds it to `PATH`, and associates
 
 ```
 kite --version
-kite run hello.kite
+kite run your-program.kite
 ```
 
 `kite update` fetches the latest release and installs it in place; `kite update
@@ -103,7 +103,6 @@ iscc installer\kite.iss
 ```
 src/  include/kite/   lexer, parser, semantic pass, interpreter, bytecode VM
 std/                   standard library, written in Kite
-examples/              sample programs
 installer/             Inno Setup script and icon
 docs/                  architecture and language notes
 ```

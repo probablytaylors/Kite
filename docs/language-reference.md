@@ -6,22 +6,15 @@ intentionally short and describes behavior that exists in the interpreter.
 ## Running A Program
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Debug
-.\build\Debug\kite.exe examples\hello.kite
+kite run program.kite
 ```
 
-The bytecode VM can be selected with:
+The bytecode VM can be selected with `kite run --bytecode program.kite`. A
+source file can also be compiled to a bytecode artifact and run separately:
 
 ```powershell
-.\build\Debug\kite.exe run --bytecode examples\calculator.kite
-```
-
-A source file can also be compiled to a bytecode artifact and run separately:
-
-```powershell
-.\build\Debug\kite.exe build examples\calculator.kite -o calculator.kbc
-.\build\Debug\kite.exe exec calculator.kbc
+kite build program.kite -o program.kbc
+kite exec program.kbc
 ```
 
 ## Values
