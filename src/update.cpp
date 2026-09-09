@@ -301,7 +301,7 @@ ReleaseNotes release_notes(const std::string& tag) {
         }
         else if (entry.empty()) { flush(); }
         else if (!pending.empty()) pending += ' ' + entry;
-        else if (!seen_structure && lead.empty()) lead = entry;
+        else if (!seen_structure) lead += (lead.empty() ? "" : " ") + entry;
     }
     flush();
 
