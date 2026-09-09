@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added `kite native <file.kite>`: a typed subset of Kite compiles through C and
+  `cl /O2 /GL` to a standalone executable. Functions take annotated parameter
+  and return types (`fn f(n: int) -> int`), `let` types are inferred, and the
+  checker rejects mismatches before codegen. `int`, `float`, `bool`, `string`,
+  arithmetic, control flow, and recursion are supported; arrays, maps, and the
+  dynamic built-ins are not yet. Native `fib(30)` runs within ~1.2x of
+  hand-written C and ~12x faster than the bytecode VM.
+- Added the `->` token and optional `: type` annotations to the parser; the
+  interpreter and VM ignore them.
+
 ## 0.2.0 - 2026-09-09
 
 ### Performance

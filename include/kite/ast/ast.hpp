@@ -154,6 +154,7 @@ struct LetStatement final : Statement {
     LetStatement() : Statement(NodeKind::Let) {}
 
     std::string name;
+    std::string declared_type;
     std::unique_ptr<Expression> initializer;
     int slot = kGlobalSlot;
 };
@@ -207,6 +208,8 @@ struct FunctionStatement final : Statement {
 
     std::string name;
     std::vector<std::string> parameters;
+    std::vector<std::string> parameter_types;
+    std::string return_type;
     std::vector<std::unique_ptr<Statement>> body;
     int frame_size = 0;
 };

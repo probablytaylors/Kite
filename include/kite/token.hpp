@@ -40,6 +40,7 @@ enum class TokenType {
     Star,
     Slash,
     Percent,
+    Arrow,
     LeftParen,
     RightParen,
     LeftBrace,

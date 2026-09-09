@@ -15,6 +15,7 @@ add_library(kite_core STATIC
     src/interpreter/interpreter.cpp
     src/lexer/lexer.cpp
     src/lexer/token.cpp
+    src/native/native.cpp
     src/parser/parser.cpp
     src/resolver/resolver.cpp
     src/semantic/semantic.cpp

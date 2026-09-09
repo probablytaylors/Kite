@@ -6,6 +6,7 @@
 
 #include "kite/interpreter/interpreter.hpp"
 #include "kite/bytecode/bytecode.hpp"
+#include "kite/native/native.hpp"
 #include "kite/parser/parser.hpp"
 #include "kite/resolver/resolver.hpp"
 #include "kite/semantic/semantic.hpp"
@@ -22,6 +23,8 @@ int usage() {
         "  kite build <file.kite> [-o <out.kbc>]\n"
         "                               Compile a source file to a bytecode artifact\n"
         "  kite exec <file.kbc>         Run a compiled bytecode artifact\n"
+        "  kite native <file.kite> [-o <out.exe>]\n"
+        "                               Compile a typed program to a native executable\n"
         "  kite update [--check]        Install the latest release (Windows)\n"
         "  kite --bytecode <file>       Alias for: kite run --bytecode <file>\n"
         "  kite --version               Print the version and exit\n";
@@ -166,6 +169,61 @@ int exec_command(const std::vector<std::string>& args) {
     return run_chunk(chunk);
 }
 
+int native_command(const std::vector<std::string>& args) {
+    std::string source_path;
+    std::string output_path;
+    bool emit_only = false;
+    for (std::size_t index = 0; index < args.size(); ++index) {
+        if (args[index] == "-o" || args[index] == "--output") {
+            if (index + 1 >= args.size()) return usage();
+            output_path = args[++index];
+        } else if (args[index] == "--emit-c") {
+            emit_only = true;
+        } else if (source_path.empty()) {
+            source_path = args[index];
+        } else {
+            return usage();
+        }
+    }
+    if (source_path.empty()) return usage();
+
+    std::string source;
+    if (!read_source(source_path, source)) return 1;
+
+    kite::Parser parser{kite::Lexer(source)};
+    const kite::Program program = parser.parse_program();
+    if (!parser.errors().empty()) {
+        for (const auto& error : parser.errors()) std::cerr << error << '\n';
+        return 1;
+    }
+
+    std::string error;
+    if (emit_only) {
+        std::string c_source;
+        if (!kite::emit_c(program, c_source, error)) {
+            std::cerr << error << '\n';
+            return 1;
+        }
+        std::cout << c_source;
+        return 0;
+    }
+
+    if (output_path.empty()) {
+        const std::string suffix = ".kite";
+        output_path = (source_path.size() > suffix.size() &&
+            source_path.compare(source_path.size() - suffix.size(), suffix.size(), suffix) == 0)
+            ? source_path.substr(0, source_path.size() - suffix.size()) + ".exe"
+            : source_path + ".exe";
+    }
+
+    if (!kite::compile_native(program, output_path, error)) {
+        std::cerr << error << '\n';
+        return 1;
+    }
+    std::cerr << "Wrote " << output_path << '\n';
+    return 0;
+}
+
 int run_command(const std::vector<std::string>& args) {
     bool use_bytecode = false;
     std::string source_path;
@@ -192,6 +250,7 @@ int main(int argc, char* argv[]) {
     if (args[0] == "run") return run_command({args.begin() + 1, args.end()});
     if (args[0] == "build") return build_command({args.begin() + 1, args.end()});
     if (args[0] == "exec") return exec_command({args.begin() + 1, args.end()});
+    if (args[0] == "native") return native_command({args.begin() + 1, args.end()});
     if (args[0] == "update") return update_command({args.begin() + 1, args.end()});
     if (args[0] == "--bytecode") return run_command(args);
 

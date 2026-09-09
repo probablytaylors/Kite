@@ -121,6 +121,16 @@ std::unique_ptr<Statement> Parser::parse_let_statement() {
     statement->name = current_.lexeme;
     advance();
 
+    if (current_.type == TokenType::Colon) {
+        advance();
+        if (current_.type != TokenType::Identifier) {
+            report_error("expected a type name after ':'");
+            return nullptr;
+        }
+        statement->declared_type = current_.lexeme;
+        advance();
+    }
+
     if (!expect(TokenType::Equal, "expected '=' after let name")) {
         return nullptr;
     }
@@ -252,6 +262,17 @@ std::unique_ptr<Statement> Parser::parse_function_statement() {
             }
             statement->parameters.push_back(current_.lexeme);
             advance();
+            std::string parameter_type;
+            if (current_.type == TokenType::Colon) {
+                advance();
+                if (current_.type != TokenType::Identifier) {
+                    report_error("expected a type name after ':'");
+                    return nullptr;
+                }
+                parameter_type = current_.lexeme;
+                advance();
+            }
+            statement->parameter_types.push_back(parameter_type);
             if (current_.type == TokenType::RightParen) {
                 break;
             }
@@ -261,8 +282,19 @@ std::unique_ptr<Statement> Parser::parse_function_statement() {
         }
     }
 
-    if (!expect(TokenType::RightParen, "expected ')' after parameters") ||
-        !expect(TokenType::LeftBrace, "expected '{' before function body")) {
+    if (!expect(TokenType::RightParen, "expected ')' after parameters")) {
+        return nullptr;
+    }
+    if (current_.type == TokenType::Arrow) {
+        advance();
+        if (current_.type != TokenType::Identifier) {
+            report_error("expected a return type after '->'");
+            return nullptr;
+        }
+        statement->return_type = current_.lexeme;
+        advance();
+    }
+    if (!expect(TokenType::LeftBrace, "expected '{' before function body")) {
         return nullptr;
     }
     statement->body = parse_block();

@@ -178,6 +178,10 @@ Token Lexer::next_token() {
             advance();
             return make_token(TokenType::MinusEqual, start, line, column);
         }
+        if (current() == '>') {
+            advance();
+            return make_token(TokenType::Arrow, start, line, column);
+        }
         return make_token(TokenType::Minus, start, line, column);
     case '*':
         if (current() == '=') {

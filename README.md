@@ -1,8 +1,9 @@
 # Kite
 
-A small scripting language I'm building from scratch in C++. It's dynamically
-typed and runs `.kite` files through a tree-walking interpreter, with a bytecode
-VM coming together alongside it.
+A small language I'm building from scratch in C++. It runs `.kite` files three
+ways: a tree-walking interpreter, a bytecode VM, and — for a typed subset — a
+native compiler that goes through C and lands within a small factor of
+hand-written C.
 
 ```
 fn fib(n) {
@@ -61,8 +62,8 @@ Built-ins: `print`, `len`, `upper`, `lower`, `type_of`, `append`, `pop`,
 written in Kite itself.
 
 See [docs/language-reference.md](docs/language-reference.md) for the full
-picture and [docs/architecture.md](docs/architecture.md) for how the
-implementation fits together.
+picture, [docs/native.md](docs/native.md) for the native compiler, and
+[docs/architecture.md](docs/architecture.md) for how the pieces fit together.
 
 ## Commands
 
@@ -71,14 +72,16 @@ kite run FILE               run a source file
 kite run --bytecode FILE     run it on the bytecode VM instead
 kite build FILE -o OUT.kbc   compile to a bytecode file
 kite exec OUT.kbc            run a compiled bytecode file
+kite native FILE -o OUT.exe  compile a typed program to a native executable
 ```
 
 The `.kbc` format is versioned. `kite exec` checks every constant reference and
 jump target against the chunk before running, so a corrupt or hand-edited file
 is rejected rather than executed.
 
-The interpreter runs everything. The bytecode VM covers most of the language
-except user-defined function calls, which still fall back to the interpreter.
+The interpreter and the bytecode VM both run the full dynamic language. `kite
+native` handles a typed subset (annotated `fn` signatures, `int`/`float`/`bool`,
+no collections yet) and produces an executable that runs at roughly C speed.
 
 ## Building from source
 

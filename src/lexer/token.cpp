@@ -72,6 +72,8 @@ const char* token_type_name(TokenType type) {
         return "SLASH";
     case TokenType::Percent:
         return "PERCENT";
+    case TokenType::Arrow:
+        return "ARROW";
     case TokenType::LeftParen:
         return "LEFT_PAREN";
     case TokenType::RightParen:
