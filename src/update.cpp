@@ -221,7 +221,8 @@ ReleaseNotes release_notes(const std::string& tag) {
             notes.security = true;
         }
         if (notes.highlights.size() >= 6) return;
-        entry.erase(std::remove(entry.begin(), entry.end(), '`'), entry.end());
+        entry.erase(std::remove_if(entry.begin(), entry.end(),
+            [](char c) { return c == '`' || c == '*'; }), entry.end());
         if (entry.size() > 108) entry = entry.substr(0, 105) + "...";
         notes.highlights.push_back(entry);
     };
