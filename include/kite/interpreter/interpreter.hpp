@@ -1,29 +1,15 @@
 #pragma once
 
-#include <cstdint>
-#include <memory>
+#include <cstddef>
 #include <ostream>
 #include <string>
 #include <unordered_map>
-#include <variant>
 #include <vector>
 
 #include "kite/ast/ast.hpp"
+#include "kite/value.hpp"
 
 namespace kite {
-
-struct ArrayValue;
-struct MapValue;
-using Value = std::variant<bool, std::int64_t, double, std::string,
-    std::shared_ptr<ArrayValue>, std::shared_ptr<MapValue>>;
-
-struct ArrayValue {
-    std::vector<Value> elements;
-};
-
-struct MapValue {
-    std::unordered_map<std::string, Value> entries;
-};
 
 class Interpreter {
 public:
@@ -56,9 +42,7 @@ private:
     std::size_t frame_base_ = 0;
     std::unordered_map<std::string, const FunctionStatement*> functions_;
     bool return_pending_ = false;
-    Value return_value_ = std::string();
+    Value return_value_;
 };
-
-std::string value_to_string(const Value& value);
 
 } // namespace kite

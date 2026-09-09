@@ -4,28 +4,16 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
-#include <iomanip>
+#include <iterator>
 #include <limits>
-#include <sstream>
-#include <unordered_map>
 #include <utility>
 
 namespace kite {
 
 namespace {
 
-bool is_numeric(const Value& value) {
-    return std::holds_alternative<std::int64_t>(value) || std::holds_alternative<double>(value);
-}
-
 double numeric_value(const Value& value) {
-    if (const auto* integer = std::get_if<std::int64_t>(&value)) {
-        return static_cast<double>(*integer);
-    }
-    if (const auto* floating_point = std::get_if<double>(&value)) {
-        return *floating_point;
-    }
-    return std::numeric_limits<double>::quiet_NaN();
+    return value.is_number() ? value.as_number() : std::numeric_limits<double>::quiet_NaN();
 }
 
 } // namespace
@@ -58,7 +46,6 @@ bool Interpreter::execute_block(const std::vector<std::unique_ptr<Statement>>& s
             break;
         }
     }
-
     return true;
 }
 
@@ -112,12 +99,11 @@ bool Interpreter::execute_statement(const Statement& statement) {
         if (!evaluate(*conditional.condition, condition)) {
             return false;
         }
-        const auto* boolean = std::get_if<bool>(&condition);
-        if (boolean == nullptr) {
+        if (!condition.is_bool()) {
             report_error("if condition must be boolean");
             return false;
         }
-        return *boolean
+        return condition.as_bool()
             ? execute_block(conditional.then_branch)
             : execute_block(conditional.else_branch);
     }
@@ -129,12 +115,11 @@ bool Interpreter::execute_statement(const Statement& statement) {
             if (!evaluate(*loop.condition, condition)) {
                 return false;
             }
-            const auto* boolean = std::get_if<bool>(&condition);
-            if (boolean == nullptr) {
+            if (!condition.is_bool()) {
                 report_error("while condition must be boolean");
                 return false;
             }
-            if (!*boolean) {
+            if (!condition.as_bool()) {
                 return true;
             }
             if (!execute_block(loop.body)) {
@@ -157,12 +142,11 @@ bool Interpreter::execute_statement(const Statement& statement) {
                 if (!evaluate(*loop.condition, condition)) {
                     return false;
                 }
-                const auto* boolean = std::get_if<bool>(&condition);
-                if (boolean == nullptr) {
+                if (!condition.is_bool()) {
                     report_error("for condition must be boolean");
                     return false;
                 }
-                if (!*boolean) {
+                if (!condition.as_bool()) {
                     return true;
                 }
             }
@@ -212,7 +196,7 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
         value = static_cast<const FloatExpression&>(expression).value;
         return true;
     case NodeKind::String:
-        value = static_cast<const StringExpression&>(expression).value;
+        value = Value::string(static_cast<const StringExpression&>(expression).value);
         return true;
     case NodeKind::Array:
         return evaluate_array(static_cast<const ArrayExpression&>(expression), value);
@@ -235,186 +219,140 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
 }
 
 bool Interpreter::evaluate_array(const ArrayExpression& array, Value& value) {
-    auto result = std::make_shared<ArrayValue>();
+    Value result = Value::array();
+    auto& elements = result.as_array();
     for (const auto& element : array.elements) {
         Value element_value;
         if (!evaluate(*element, element_value)) {
             return false;
         }
-        result->elements.push_back(std::move(element_value));
+        elements.push_back(std::move(element_value));
     }
     value = std::move(result);
     return true;
 }
 
 bool Interpreter::evaluate_map(const MapExpression& map, Value& value) {
-    auto result = std::make_shared<MapValue>();
+    Value result = Value::map();
+    auto& entries = result.as_map();
     for (const auto& entry : map.entries) {
         Value key;
         Value entry_value;
         if (!evaluate(*entry.first, key) || !evaluate(*entry.second, entry_value)) {
             return false;
         }
-        const auto* string_key = std::get_if<std::string>(&key);
-        if (string_key == nullptr) {
+        if (!key.is_string()) {
             report_error("map keys must be strings");
             return false;
         }
-        result->entries[*string_key] = std::move(entry_value);
+        entries[key.as_string()] = std::move(entry_value);
     }
     value = std::move(result);
     return true;
 }
 
-bool Interpreter::evaluate_binary(const BinaryExpression& binary_ref, Value& value) {
-    const BinaryExpression* binary = &binary_ref;
-    {
-        Value left;
-        if (!evaluate(*binary->left, left)) {
+bool Interpreter::evaluate_binary(const BinaryExpression& binary, Value& value) {
+    Value left;
+    if (!evaluate(*binary.left, left)) {
+        return false;
+    }
+
+    if (binary.operator_type == BinaryOperator::And || binary.operator_type == BinaryOperator::Or) {
+        if (!left.is_bool()) {
+            report_error("logical operators require boolean values");
             return false;
         }
-
-        if (binary->operator_type == BinaryOperator::And || binary->operator_type == BinaryOperator::Or) {
-            const auto* left_boolean = std::get_if<bool>(&left);
-            if (left_boolean == nullptr) {
-                report_error("logical operators require boolean values");
-                return false;
-            }
-            if (binary->operator_type == BinaryOperator::And && !*left_boolean) {
-                value = false;
-                return true;
-            }
-            if (binary->operator_type == BinaryOperator::Or && *left_boolean) {
-                value = true;
-                return true;
-            }
-            Value right;
-            if (!evaluate(*binary->right, right)) {
-                return false;
-            }
-            const auto* right_boolean = std::get_if<bool>(&right);
-            if (right_boolean == nullptr) {
-                report_error("logical operators require boolean values");
-                return false;
-            }
-            value = *right_boolean;
+        if (binary.operator_type == BinaryOperator::And && !left.as_bool()) {
+            value = false;
             return true;
         }
-
+        if (binary.operator_type == BinaryOperator::Or && left.as_bool()) {
+            value = true;
+            return true;
+        }
         Value right;
-        if (!evaluate(*binary->right, right)) {
+        if (!evaluate(*binary.right, right)) {
             return false;
         }
-
-        const bool is_comparison = binary->operator_type == BinaryOperator::Equal ||
-            binary->operator_type == BinaryOperator::NotEqual ||
-            binary->operator_type == BinaryOperator::Less ||
-            binary->operator_type == BinaryOperator::LessEqual ||
-            binary->operator_type == BinaryOperator::Greater ||
-            binary->operator_type == BinaryOperator::GreaterEqual;
-        const bool left_is_integer = std::holds_alternative<std::int64_t>(left);
-        const bool right_is_integer = std::holds_alternative<std::int64_t>(right);
-        const bool left_is_numeric = left_is_integer || std::holds_alternative<double>(left);
-        const bool right_is_numeric = right_is_integer || std::holds_alternative<double>(right);
-
-        if (binary->operator_type == BinaryOperator::Add &&
-            std::holds_alternative<std::string>(left) && std::holds_alternative<std::string>(right)) {
-            value = std::get<std::string>(left) + std::get<std::string>(right);
-            return true;
-        }
-
-        if (binary->operator_type == BinaryOperator::Equal || binary->operator_type == BinaryOperator::NotEqual) {
-            const bool equal = left_is_numeric && right_is_numeric
-                ? (left_is_integer ? static_cast<double>(std::get<std::int64_t>(left)) : std::get<double>(left)) ==
-                    (right_is_integer ? static_cast<double>(std::get<std::int64_t>(right)) : std::get<double>(right))
-                : left.index() == right.index() && left == right;
-            value = binary->operator_type == BinaryOperator::Equal ? equal : !equal;
-            return true;
-        }
-
-        if (!left_is_numeric || !right_is_numeric) {
-            report_error(is_comparison ? "comparison requires numeric values" : "arithmetic requires numeric values");
+        if (!right.is_bool()) {
+            report_error("logical operators require boolean values");
             return false;
         }
+        value = right.as_bool();
+        return true;
+    }
 
-        const double left_number = left_is_integer
-            ? static_cast<double>(std::get<std::int64_t>(left))
-            : std::get<double>(left);
-        const double right_number = right_is_integer
-            ? static_cast<double>(std::get<std::int64_t>(right))
-            : std::get<double>(right);
+    Value right;
+    if (!evaluate(*binary.right, right)) {
+        return false;
+    }
 
-        if (is_comparison) {
-            switch (binary->operator_type) {
-            case BinaryOperator::Less:
-                value = left_number < right_number;
-                break;
-            case BinaryOperator::LessEqual:
-                value = left_number <= right_number;
-                break;
-            case BinaryOperator::Greater:
-                value = left_number > right_number;
-                break;
-            case BinaryOperator::GreaterEqual:
-                value = left_number >= right_number;
-                break;
-            default:
-                break;
-            }
-            return true;
-        }
+    const bool is_comparison = binary.operator_type == BinaryOperator::Less ||
+        binary.operator_type == BinaryOperator::LessEqual ||
+        binary.operator_type == BinaryOperator::Greater ||
+        binary.operator_type == BinaryOperator::GreaterEqual;
 
-        if ((binary->operator_type == BinaryOperator::Divide ||
-             binary->operator_type == BinaryOperator::Modulo) && right_number == 0.0) {
-            report_error(binary->operator_type == BinaryOperator::Modulo
-                ? "cannot take remainder by zero"
-                : "cannot divide by zero");
-            return false;
-        }
+    if (binary.operator_type == BinaryOperator::Add && left.is_string() && right.is_string()) {
+        value = Value::string(left.as_string() + right.as_string());
+        return true;
+    }
 
-        if (left_is_integer && right_is_integer && binary->operator_type != BinaryOperator::Divide) {
-            const auto left_integer = std::get<std::int64_t>(left);
-            const auto right_integer = std::get<std::int64_t>(right);
-            switch (binary->operator_type) {
-            case BinaryOperator::Add:
-                value = left_integer + right_integer;
-                break;
-            case BinaryOperator::Subtract:
-                value = left_integer - right_integer;
-                break;
-            case BinaryOperator::Multiply:
-                value = left_integer * right_integer;
-                break;
-            case BinaryOperator::Modulo:
-                value = left_integer % right_integer;
-                break;
-            default:
-                break;
-            }
-            return true;
-        }
+    if (binary.operator_type == BinaryOperator::Equal || binary.operator_type == BinaryOperator::NotEqual) {
+        const bool equal = left.equals(right);
+        value = binary.operator_type == BinaryOperator::Equal ? equal : !equal;
+        return true;
+    }
 
-        switch (binary->operator_type) {
-        case BinaryOperator::Add:
-            value = left_number + right_number;
-            break;
-        case BinaryOperator::Subtract:
-            value = left_number - right_number;
-            break;
-        case BinaryOperator::Multiply:
-            value = left_number * right_number;
-            break;
-        case BinaryOperator::Divide:
-            value = left_number / right_number;
-            break;
-        case BinaryOperator::Modulo:
-            value = std::fmod(left_number, right_number);
-            break;
-        default:
-            break;
+    if (!left.is_number() || !right.is_number()) {
+        report_error(is_comparison ? "comparison requires numeric values" : "arithmetic requires numeric values");
+        return false;
+    }
+
+    const bool both_integer = left.is_int() && right.is_int();
+    const double left_number = left.as_number();
+    const double right_number = right.as_number();
+
+    if (is_comparison) {
+        switch (binary.operator_type) {
+        case BinaryOperator::Less: value = left_number < right_number; break;
+        case BinaryOperator::LessEqual: value = left_number <= right_number; break;
+        case BinaryOperator::Greater: value = left_number > right_number; break;
+        case BinaryOperator::GreaterEqual: value = left_number >= right_number; break;
+        default: break;
         }
         return true;
     }
+
+    if ((binary.operator_type == BinaryOperator::Divide ||
+         binary.operator_type == BinaryOperator::Modulo) && right_number == 0.0) {
+        report_error(binary.operator_type == BinaryOperator::Modulo
+            ? "cannot take remainder by zero"
+            : "cannot divide by zero");
+        return false;
+    }
+
+    if (both_integer && binary.operator_type != BinaryOperator::Divide) {
+        const std::int64_t a = left.as_int();
+        const std::int64_t b = right.as_int();
+        switch (binary.operator_type) {
+        case BinaryOperator::Add: value = a + b; break;
+        case BinaryOperator::Subtract: value = a - b; break;
+        case BinaryOperator::Multiply: value = a * b; break;
+        case BinaryOperator::Modulo: value = a % b; break;
+        default: break;
+        }
+        return true;
+    }
+
+    switch (binary.operator_type) {
+    case BinaryOperator::Add: value = left_number + right_number; break;
+    case BinaryOperator::Subtract: value = left_number - right_number; break;
+    case BinaryOperator::Multiply: value = left_number * right_number; break;
+    case BinaryOperator::Divide: value = left_number / right_number; break;
+    case BinaryOperator::Modulo: value = std::fmod(left_number, right_number); break;
+    default: break;
+    }
+    return true;
 }
 
 bool Interpreter::evaluate_unary(const UnaryExpression& unary, Value& value) {
@@ -422,25 +360,21 @@ bool Interpreter::evaluate_unary(const UnaryExpression& unary, Value& value) {
     if (!evaluate(*unary.operand, operand)) {
         return false;
     }
-    if (const auto* integer = std::get_if<std::int64_t>(&operand)) {
-        value = -*integer;
-        return true;
-    }
-    if (const auto* floating_point = std::get_if<double>(&operand)) {
-        if (unary.operator_type == UnaryOperator::Not) {
+    if (unary.operator_type == UnaryOperator::Not) {
+        if (!operand.is_bool()) {
             report_error("unary '!' requires a boolean value");
             return false;
         }
-        value = -*floating_point;
+        value = !operand.as_bool();
         return true;
     }
-    if (unary.operator_type == UnaryOperator::Not) {
-        if (const auto* boolean = std::get_if<bool>(&operand)) {
-            value = !*boolean;
-            return true;
-        }
-        report_error("unary '!' requires a boolean value");
-        return false;
+    if (operand.is_int()) {
+        value = -operand.as_int();
+        return true;
+    }
+    if (operand.is_float()) {
+        value = -operand.as_float();
+        return true;
     }
     report_error("unary '-' requires a numeric value");
     return false;
@@ -472,15 +406,13 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
             if (!evaluate(*call.arguments[index], argument)) {
                 return false;
             }
-
             if (index > 0) {
                 output_ << ' ';
             }
-            output_ << value_to_string(argument);
+            output_ << to_string(argument);
         }
         output_ << '\n';
-
-        value = std::string();
+        value = Value::string("");
         return true;
     }
 
@@ -493,16 +425,16 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         if (!evaluate(*call.arguments[0], argument)) {
             return false;
         }
-        if (const auto* string = std::get_if<std::string>(&argument)) {
-            value = static_cast<std::int64_t>(string->size());
+        if (argument.is_string()) {
+            value = static_cast<std::int64_t>(argument.as_string().size());
             return true;
         }
-        if (const auto* array = std::get_if<std::shared_ptr<ArrayValue>>(&argument)) {
-            value = static_cast<std::int64_t>((*array)->elements.size());
+        if (argument.is_array()) {
+            value = static_cast<std::int64_t>(argument.as_array().size());
             return true;
         }
-        if (const auto* map = std::get_if<std::shared_ptr<MapValue>>(&argument)) {
-            value = static_cast<std::int64_t>((*map)->entries.size());
+        if (argument.is_map()) {
+            value = static_cast<std::int64_t>(argument.as_map().size());
             return true;
         }
         report_error("function 'len' requires a string, array, or map");
@@ -518,16 +450,16 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         if (!evaluate(*call.arguments[0], argument)) {
             return false;
         }
-        const auto* string = std::get_if<std::string>(&argument);
-        if (string == nullptr) {
+        if (!argument.is_string()) {
             report_error("function '" + callee->name + "' requires a string");
             return false;
         }
-        std::string result = *string;
-        std::transform(result.begin(), result.end(), result.begin(), [upper = callee->name == "upper"](unsigned char character) {
+        std::string result = argument.as_string();
+        const bool upper = callee->name == "upper";
+        std::transform(result.begin(), result.end(), result.begin(), [upper](unsigned char character) {
             return static_cast<char>(upper ? std::toupper(character) : std::tolower(character));
         });
-        value = std::move(result);
+        value = Value::string(std::move(result));
         return true;
     }
 
@@ -540,17 +472,17 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         if (!evaluate(*call.arguments[0], argument)) {
             return false;
         }
-        const auto* path = std::get_if<std::string>(&argument);
-        if (path == nullptr) {
+        if (!argument.is_string()) {
             report_error("function 'read_file' requires a string path");
             return false;
         }
-        std::ifstream input(*path, std::ios::binary);
+        std::ifstream input(argument.as_string(), std::ios::binary);
         if (!input) {
-            report_error("could not open file: " + *path);
+            report_error("could not open file: " + argument.as_string());
             return false;
         }
-        value = std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        value = Value::string(std::string((std::istreambuf_iterator<char>(input)),
+            std::istreambuf_iterator<char>()));
         return true;
     }
 
@@ -564,18 +496,16 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         if (!evaluate(*call.arguments[0], path_value) || !evaluate(*call.arguments[1], content_value)) {
             return false;
         }
-        const auto* path = std::get_if<std::string>(&path_value);
-        const auto* content = std::get_if<std::string>(&content_value);
-        if (path == nullptr || content == nullptr) {
+        if (!path_value.is_string() || !content_value.is_string()) {
             report_error("function 'write_file' requires string path and content");
             return false;
         }
-        std::ofstream output(*path, std::ios::binary);
+        std::ofstream output(path_value.as_string(), std::ios::binary);
         if (!output) {
-            report_error("could not write file: " + *path);
+            report_error("could not write file: " + path_value.as_string());
             return false;
         }
-        output << *content;
+        output << content_value.as_string();
         value = true;
         return true;
     }
@@ -587,12 +517,7 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         }
         Value argument;
         if (!evaluate(*call.arguments[0], argument)) return false;
-        if (std::holds_alternative<bool>(argument)) value = std::string("boolean");
-        else if (std::holds_alternative<std::int64_t>(argument)) value = std::string("integer");
-        else if (std::holds_alternative<double>(argument)) value = std::string("float");
-        else if (std::holds_alternative<std::string>(argument)) value = std::string("string");
-        else if (std::holds_alternative<std::shared_ptr<ArrayValue>>(argument)) value = std::string("array");
-        else value = std::string("map");
+        value = Value::string(type_name(argument));
         return true;
     }
 
@@ -604,13 +529,12 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         Value target;
         Value element;
         if (!evaluate(*call.arguments[0], target) || !evaluate(*call.arguments[1], element)) return false;
-        const auto* array = std::get_if<std::shared_ptr<ArrayValue>>(&target);
-        if (array == nullptr) {
+        if (!target.is_array()) {
             report_error("function 'append' requires an array");
             return false;
         }
-        (*array)->elements.push_back(std::move(element));
-        value = *array;
+        target.as_array().push_back(std::move(element));
+        value = std::move(target);
         return true;
     }
 
@@ -621,13 +545,12 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         }
         Value target;
         if (!evaluate(*call.arguments[0], target)) return false;
-        const auto* array = std::get_if<std::shared_ptr<ArrayValue>>(&target);
-        if (array == nullptr || (*array)->elements.empty()) {
+        if (!target.is_array() || target.as_array().empty()) {
             report_error("function 'pop' requires a non-empty array");
             return false;
         }
-        value = (*array)->elements.back();
-        (*array)->elements.pop_back();
+        value = std::move(target.as_array().back());
+        target.as_array().pop_back();
         return true;
     }
 
@@ -653,42 +576,19 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         return true;
     };
 
-    if (callee->name == "sqrt") {
-        return math_function(static_cast<double (*)(double)>(std::sqrt), true);
-    }
-    if (callee->name == "sin") {
-        return math_function(static_cast<double (*)(double)>(std::sin), false);
-    }
-    if (callee->name == "cos") {
-        return math_function(static_cast<double (*)(double)>(std::cos), false);
-    }
-    if (callee->name == "tan") {
-        return math_function(static_cast<double (*)(double)>(std::tan), false);
-    }
-    if (callee->name == "log") {
-        return math_function(static_cast<double (*)(double)>(std::log), true);
-    }
-    if (callee->name == "abs") {
-        return math_function(static_cast<double (*)(double)>(std::fabs), false);
-    }
-    if (callee->name == "floor") {
-        return math_function(static_cast<double (*)(double)>(std::floor), false);
-    }
-    if (callee->name == "ceil") {
-        return math_function(static_cast<double (*)(double)>(std::ceil), false);
-    }
-    if (callee->name == "exp") {
-        return math_function(static_cast<double (*)(double)>(std::exp), false);
-    }
-    if (callee->name == "asin") {
-        return math_function(static_cast<double (*)(double)>(std::asin), false);
-    }
-    if (callee->name == "acos") {
-        return math_function(static_cast<double (*)(double)>(std::acos), false);
-    }
-    if (callee->name == "atan") {
-        return math_function(static_cast<double (*)(double)>(std::atan), false);
-    }
+    if (callee->name == "sqrt") return math_function(static_cast<double (*)(double)>(std::sqrt), true);
+    if (callee->name == "sin") return math_function(static_cast<double (*)(double)>(std::sin), false);
+    if (callee->name == "cos") return math_function(static_cast<double (*)(double)>(std::cos), false);
+    if (callee->name == "tan") return math_function(static_cast<double (*)(double)>(std::tan), false);
+    if (callee->name == "log") return math_function(static_cast<double (*)(double)>(std::log), true);
+    if (callee->name == "abs") return math_function(static_cast<double (*)(double)>(std::fabs), false);
+    if (callee->name == "floor") return math_function(static_cast<double (*)(double)>(std::floor), false);
+    if (callee->name == "ceil") return math_function(static_cast<double (*)(double)>(std::ceil), false);
+    if (callee->name == "exp") return math_function(static_cast<double (*)(double)>(std::exp), false);
+    if (callee->name == "asin") return math_function(static_cast<double (*)(double)>(std::asin), false);
+    if (callee->name == "acos") return math_function(static_cast<double (*)(double)>(std::acos), false);
+    if (callee->name == "atan") return math_function(static_cast<double (*)(double)>(std::atan), false);
+
     if (callee->name == "pow") {
         if (call.arguments.size() != 2) {
             report_error("math function 'pow' expects two arguments");
@@ -708,6 +608,7 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         value = std::pow(base_number, exponent_number);
         return true;
     }
+
     if (callee->name == "atan2" || callee->name == "min" || callee->name == "max") {
         if (call.arguments.size() != 2) {
             report_error("function '" + callee->name + "' expects two arguments");
@@ -716,12 +617,12 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         Value left;
         Value right;
         if (!evaluate(*call.arguments[0], left) || !evaluate(*call.arguments[1], right)) return false;
-        if (!is_numeric(left) || !is_numeric(right)) {
+        if (!left.is_number() || !right.is_number()) {
             report_error("function '" + callee->name + "' requires numeric arguments");
             return false;
         }
-        const double left_number = numeric_value(left);
-        const double right_number = numeric_value(right);
+        const double left_number = left.as_number();
+        const double right_number = right.as_number();
         if (callee->name == "atan2") value = std::atan2(left_number, right_number);
         else if (callee->name == "min") value = std::min(left_number, right_number);
         else value = std::max(left_number, right_number);
@@ -739,33 +640,31 @@ bool Interpreter::evaluate_index(const IndexExpression& index, Value& value) {
         return false;
     }
 
-    const auto* array = std::get_if<std::shared_ptr<ArrayValue>>(&target);
-    const auto* map = std::get_if<std::shared_ptr<MapValue>>(&target);
-    const auto* integer = std::get_if<std::int64_t>(&position);
-    if (map != nullptr) {
-        const auto* string_key = std::get_if<std::string>(&position);
-        if (string_key == nullptr) {
+    if (target.is_map()) {
+        if (!position.is_string()) {
             report_error("map index requires a string key");
             return false;
         }
-        const auto entry = (*map)->entries.find(*string_key);
-        if (entry == (*map)->entries.end()) {
-            report_error("map key not found: " + *string_key);
+        const auto& entries = target.as_map();
+        const auto entry = entries.find(position.as_string());
+        if (entry == entries.end()) {
+            report_error("map key not found: " + position.as_string());
             return false;
         }
         value = entry->second;
         return true;
     }
-    if (array == nullptr || integer == nullptr) {
+    if (!target.is_array() || !position.is_int()) {
         report_error("array index requires an array and integer index");
         return false;
     }
-    if (*integer < 0 || static_cast<std::size_t>(*integer) >= (*array)->elements.size()) {
+    const auto& elements = target.as_array();
+    const std::int64_t position_index = position.as_int();
+    if (position_index < 0 || static_cast<std::size_t>(position_index) >= elements.size()) {
         report_error("array index out of bounds");
         return false;
     }
-
-    value = (*array)->elements[static_cast<std::size_t>(*integer)];
+    value = elements[static_cast<std::size_t>(position_index)];
     return true;
 }
 
@@ -829,55 +728,6 @@ Value* Interpreter::find_global(const std::string& name) {
 
 void Interpreter::report_error(const std::string& message) {
     errors_.push_back(message);
-}
-
-std::string value_to_string(const Value& value) {
-    if (const auto* boolean = std::get_if<bool>(&value)) {
-        return *boolean ? "true" : "false";
-    }
-
-    if (const auto* integer = std::get_if<std::int64_t>(&value)) {
-        return std::to_string(*integer);
-    }
-
-    if (const auto* floating_point = std::get_if<double>(&value)) {
-        std::ostringstream output;
-        output << std::setprecision(15) << *floating_point;
-        return output.str();
-    }
-
-    if (const auto* array = std::get_if<std::shared_ptr<ArrayValue>>(&value)) {
-        std::ostringstream output;
-        output << '[';
-        for (std::size_t index = 0; index < (*array)->elements.size(); ++index) {
-            if (index > 0) {
-                output << ", ";
-            }
-            output << value_to_string((*array)->elements[index]);
-        }
-        output << ']';
-        return output.str();
-    }
-
-    if (const auto* map = std::get_if<std::shared_ptr<MapValue>>(&value)) {
-        std::ostringstream output;
-        output << '{';
-        std::vector<std::string> keys;
-        for (const auto& entry : (*map)->entries) {
-            keys.push_back(entry.first);
-        }
-        std::sort(keys.begin(), keys.end());
-        for (std::size_t index = 0; index < keys.size(); ++index) {
-            if (index > 0) {
-                output << ", ";
-            }
-            output << '"' << keys[index] << "\": " << value_to_string((*map)->entries.at(keys[index]));
-        }
-        output << '}';
-        return output.str();
-    }
-
-    return std::get<std::string>(value);
 }
 
 } // namespace kite

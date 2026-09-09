@@ -18,6 +18,7 @@ add_library(kite_core STATIC
     src/parser/parser.cpp
     src/resolver/resolver.cpp
     src/semantic/semantic.cpp
+    src/value.cpp
 )
 
 target_compile_features(kite_core PUBLIC cxx_std_20)
