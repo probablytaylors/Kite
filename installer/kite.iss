@@ -1,24 +1,31 @@
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
 #define AppName "Kite"
-#define AppVersion "0.1.0"
 #define AppPublisher "Kite"
 #define AppExe "kite.exe"
+#define AppUrl "https://github.com/probablytaylors/Kite"
 
 [Setup]
 AppId={{C81C624E-7D60-4AE6-BE58-AC7A1711567A}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
+AppSupportURL={#AppUrl}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\LICENSE
 OutputDir=output
 OutputBaseFilename=kite-setup
+SetupIconFile=kite.ico
+UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 ChangesEnvironment=yes
 
 [Tasks]
@@ -27,6 +34,7 @@ Name: "associate"; Description: "Associate .kite files with Kite"
 
 [Files]
 Source: "..\build\Release\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "kite.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\examples\*"; DestDir: "{app}\examples"; Flags: ignoreversion recursesubdirs
 Source: "..\std\*"; DestDir: "{app}\std"; Flags: ignoreversion recursesubdirs
 Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs
@@ -43,7 +51,7 @@ Root: HKLM; Subkey: "Software\Classes\.kite"; ValueType: string; ValueName: ""; 
 Root: HKLM; Subkey: "Software\Classes\Kite.Script"; ValueType: string; ValueName: ""; \
     ValueData: "Kite source file"; Flags: uninsdeletekey; Tasks: associate
 Root: HKLM; Subkey: "Software\Classes\Kite.Script\DefaultIcon"; ValueType: string; ValueName: ""; \
-    ValueData: "{app}\{#AppExe},0"; Tasks: associate
+    ValueData: "{app}\kite.ico"; Tasks: associate
 Root: HKLM; Subkey: "Software\Classes\Kite.Script\shell\open\command"; ValueType: string; ValueName: ""; \
     ValueData: """{app}\{#AppExe}"" run ""%1"""; Tasks: associate
 

@@ -2,22 +2,34 @@
 
 Kite is a programming language built from scratch in C++.
 
+## Install
+
+Download `kite-setup.exe` from the [latest release](https://github.com/probablytaylors/Kite/releases)
+and run it. It installs `kite.exe`, adds it to `PATH`, and registers the
+`.kite` extension. Then:
+
+```powershell
+kite --version
+kite run examples\hello.kite
+```
+
 ## Current Status
 
-The lexer, parser, AST, semantic analyzer, interpreter, and initial bytecode VM
-are implemented. Kite can read source files, validate types, evaluate numeric
-and boolean values, mutate arrays, perform arithmetic and comparisons, and use
-control flow, functions, file I/O, and standard-library helpers.
+The lexer, parser, AST, semantic analyzer, interpreter, and bytecode VM are
+implemented. Kite runs source files: arithmetic, comparisons, boolean logic,
+`if`/`else if`/`else`, `while` and `for` loops, functions with recursion,
+arrays and maps, string handling, file I/O, and standard-library helpers.
 
 ## Project Structure
 
 ```text
 .
-├── .github/workflows/       Continuous integration configuration
+├── .github/workflows/       CI and release automation
+├── cmake/                   Generated version header and Windows resource
 ├── docs/                    Architecture and language notes
 ├── examples/                Sample Kite programs
 ├── include/kite/            Public C++ headers
-├── installer/               Windows installer script
+├── installer/               Inno Setup installer script and icon
 ├── src/                     Lexer, parser, semantic analyzer, interpreter, bytecode VM
 ├── std/                     Source-level standard library modules
 ├── tools/                   Future developer tools
@@ -26,7 +38,7 @@ control flow, functions, file I/O, and standard-library helpers.
 └── LICENSE
 ```
 
-## Build
+## Build from source
 
 From a PowerShell terminal at the repository root:
 

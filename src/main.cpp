@@ -8,6 +8,7 @@
 #include "kite/bytecode/bytecode.hpp"
 #include "kite/parser/parser.hpp"
 #include "kite/semantic/semantic.hpp"
+#include "kite/version.hpp"
 
 namespace {
 
@@ -19,8 +20,14 @@ int usage() {
         "  kite build <file.kite> [-o <out.kbc>]\n"
         "                               Compile a source file to a bytecode artifact\n"
         "  kite exec <file.kbc>         Run a compiled bytecode artifact\n"
-        "  kite --bytecode <file>       Alias for: kite run --bytecode <file>\n";
+        "  kite --bytecode <file>       Alias for: kite run --bytecode <file>\n"
+        "  kite --version               Print the version and exit\n";
     return 2;
+}
+
+int print_version() {
+    std::cout << "kite " << kite::kVersion << '\n';
+    return 0;
 }
 
 bool read_source(const std::string& path, std::string& source) {
@@ -166,6 +173,7 @@ int main(int argc, char* argv[]) {
     const std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty()) return usage();
 
+    if (args[0] == "--version" || args[0] == "-v" || args[0] == "version") return print_version();
     if (args[0] == "run") return run_command({args.begin() + 1, args.end()});
     if (args[0] == "build") return build_command({args.begin() + 1, args.end()});
     if (args[0] == "exec") return exec_command({args.begin() + 1, args.end()});

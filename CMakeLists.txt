@@ -1,8 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(Kite LANGUAGES CXX)
+project(Kite VERSION 0.1.0 LANGUAGES CXX)
 
 option(KITE_WERROR "Treat compiler warnings as errors" OFF)
+
+configure_file(
+    ${PROJECT_SOURCE_DIR}/cmake/version.hpp.in
+    ${PROJECT_BINARY_DIR}/generated/kite/version.hpp
+    @ONLY
+)
 
 add_library(kite_core STATIC
     src/bytecode/bytecode.cpp
@@ -14,7 +20,10 @@ add_library(kite_core STATIC
 )
 
 target_compile_features(kite_core PUBLIC cxx_std_20)
-target_include_directories(kite_core PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(kite_core PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_BINARY_DIR}/generated
+)
 
 if(MSVC)
     target_compile_options(kite_core PUBLIC /W4 /permissive-)
@@ -28,7 +37,17 @@ else()
     endif()
 endif()
 
-add_executable(kite src/main.cpp)
+set(kite_sources src/main.cpp)
+if(WIN32)
+    configure_file(
+        ${PROJECT_SOURCE_DIR}/cmake/kite.rc.in
+        ${PROJECT_BINARY_DIR}/generated/kite.rc
+        @ONLY
+    )
+    list(APPEND kite_sources ${PROJECT_BINARY_DIR}/generated/kite.rc)
+endif()
+
+add_executable(kite ${kite_sources})
 target_link_libraries(kite PRIVATE kite_core)
 
 install(TARGETS kite RUNTIME DESTINATION bin)

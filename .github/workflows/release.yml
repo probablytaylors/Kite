@@ -12,6 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          $version = if ($ref -match '^v?(\d+\.\d+\.\d+)') { $Matches[1] } else { "0.0.0" }
+          "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Build
         run: |
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -D KITE_WERROR=ON
@@ -21,7 +29,7 @@ jobs:
         run: choco install innosetup --no-progress -y
 
       - name: Build installer
-        run: iscc installer\kite.iss
+        run: iscc /DAppVersion=${{ steps.version.outputs.value }} installer\kite.iss
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
@@ -34,3 +42,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: installer/output/kite-setup.exe
+          generate_release_notes: true
