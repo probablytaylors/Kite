@@ -2,6 +2,9 @@
 
 ## 0.3.2 - 2026-09-09
 
+Security fixes from a full audit. Update if you ever run `kite exec` on a `.kbc`
+file you did not compile yourself.
+
 ### Security
 
 - **The bytecode VM did not bounds-check local-slot access.** A hand-crafted
@@ -30,7 +33,8 @@
 - The module loader now caps import depth and file count.
 - `kite update` validates release tags before using them in a command, aborts
   if it can't fetch the checksum (rather than proceeding unverified), and
-  flags releases whose changelog mentions security fixes.
+  flags releases whose changelog mentions security fixes. Its "what's new"
+  summary now strips Markdown and shows one short line per change.
 
 Added `SECURITY.md` with a disclosure policy and the threat model.
 

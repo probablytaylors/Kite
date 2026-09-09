@@ -195,9 +195,68 @@ std::string match_version(const std::string& spec, const std::vector<std::string
 }
 
 struct ReleaseNotes {
+    std::string summary;
     std::vector<std::string> highlights;
     bool security = false;
 };
+
+std::string strip_markdown(const std::string& text) {
+    std::string out;
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        const char character = text[index];
+        if (character == '`' || character == '*') continue;
+        if (character == '[') {
+            const std::size_t close = text.find(']', index);
+            if (close != std::string::npos && close + 1 < text.size() && text[close + 1] == '(') {
+                const std::size_t paren = text.find(')', close);
+                if (paren != std::string::npos) {
+                    out += text.substr(index + 1, close - index - 1);
+                    index = paren;
+                    continue;
+                }
+            }
+        }
+        out += character;
+    }
+    return out;
+}
+
+std::string first_sentences(std::string entry, int count) {
+    entry = strip_markdown(trim(entry));
+    int seen = 0;
+    for (std::size_t index = 0; index + 1 < entry.size(); ++index) {
+        if (entry[index] == '.' && entry[index + 1] == ' ') {
+            if (++seen >= count) { entry.resize(index + 1); break; }
+        }
+    }
+    return trim(entry);
+}
+
+std::string headline(std::string entry) {
+    entry = first_sentences(std::move(entry), 1);
+    if (!entry.empty() && entry.back() == '.') entry.pop_back();
+    if (entry.size() > 74) {
+        std::size_t cut = entry.rfind(' ', 74);
+        if (cut == std::string::npos || cut < 40) cut = 74;
+        entry.resize(cut);
+        entry += "...";
+    }
+    return trim(entry);
+}
+
+void print_wrapped(const std::string& text, const std::string& indent, std::size_t width) {
+    std::size_t start = 0;
+    while (start < text.size()) {
+        if (text.size() - start <= width) {
+            std::cout << indent << text.substr(start) << '\n';
+            return;
+        }
+        std::size_t space = text.rfind(' ', start + width);
+        if (space == std::string::npos || space <= start) space = start + width;
+        std::cout << indent << text.substr(start, space - start) << '\n';
+        start = space + 1;
+    }
+}
 
 ReleaseNotes release_notes(const std::string& tag) {
     const std::string text = run_capture(
@@ -211,20 +270,17 @@ ReleaseNotes release_notes(const std::string& tag) {
     if (!current.empty()) lines.push_back(current);
 
     ReleaseNotes notes;
+    std::string lead;
     std::string pending;
+    bool seen_structure = false;
     const auto flush = [&] {
-        std::string entry = trim(pending);
+        const std::string raw = trim(pending);
         pending.clear();
-        if (entry.empty()) return;
-        const std::string low = lowercase(entry);
-        if (low.find("security") != std::string::npos || low.find("cve-") != std::string::npos) {
-            notes.security = true;
-        }
-        if (notes.highlights.size() >= 6) return;
-        entry.erase(std::remove_if(entry.begin(), entry.end(),
-            [](char c) { return c == '`' || c == '*'; }), entry.end());
-        if (entry.size() > 108) entry = entry.substr(0, 105) + "...";
-        notes.highlights.push_back(entry);
+        if (raw.empty()) return;
+        if (lowercase(raw).find("security") != std::string::npos) notes.security = true;
+        if (notes.highlights.size() >= 3) return;
+        const std::string line = headline(raw);
+        if (!line.empty()) notes.highlights.push_back(line);
     };
 
     bool inside = false;
@@ -237,14 +293,22 @@ ReleaseNotes release_notes(const std::string& tag) {
         }
         if (!inside) continue;
         const std::string entry = trim(line);
-        if (entry.rfind("- ", 0) == 0) { flush(); pending = entry.substr(2); }
-        else if (entry.empty() || entry.rfind("### ", 0) == 0) {
+        if (entry.rfind("- ", 0) == 0) { seen_structure = true; flush(); pending = entry.substr(2); }
+        else if (entry.rfind("#", 0) == 0) {
+            seen_structure = true;
             if (lowercase(entry).find("security") != std::string::npos) notes.security = true;
             flush();
         }
+        else if (entry.empty()) { flush(); }
         else if (!pending.empty()) pending += ' ' + entry;
+        else if (!seen_structure && lead.empty()) lead = entry;
     }
     flush();
+
+    if (!lead.empty()) {
+        notes.summary = first_sentences(lead, 2);
+        if (lowercase(lead).find("security") != std::string::npos) notes.security = true;
+    }
     return notes;
 }
 
@@ -385,18 +449,21 @@ int update_windows(const UpdateOptions& options) {
     }
 
     const ReleaseNotes notes = release_notes(tag);
+    std::cout << '\n';
     if (notes.security && direction > 0) {
-        std::cout << "\n  " << red(std::string(warn_mark()) + " This release contains security fixes.")
-                  << ' ' << bold("Updating is recommended.") << '\n';
+        std::cout << "  " << yellow(std::string(warn_mark()) + " Includes security fixes")
+                  << dim(" - updating is recommended") << "\n\n";
     }
-    if (!notes.highlights.empty()) {
-        std::cout << "\n  " << bold(direction < 0 ? "In " + shown : "What's new") << '\n';
+    if (!notes.summary.empty()) {
+        print_wrapped(notes.summary, "  ", 76);
+    } else {
         for (const std::string& entry : notes.highlights) {
             std::cout << "    " << dim("-") << ' ' << entry << '\n';
         }
-        std::cout << "  " << dim(std::string(kRepoUrl) + "/blob/" + tag + "/CHANGELOG.md") << '\n';
     }
-    std::cout << '\n';
+    if (!notes.summary.empty() || !notes.highlights.empty()) {
+        std::cout << "  " << dim(std::string(kRepoUrl) + "/blob/" + tag + "/CHANGELOG.md") << "\n\n";
+    }
 
     if (options.check) {
         std::cout << "  Run " << cyan(wants_specific ? "kite update " + shown : "kite update")
