@@ -2,17 +2,22 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-09
+
 ### Performance
 
 - Dispatch AST nodes by a `NodeKind` tag instead of `dynamic_cast` chains.
 - A resolver pass assigns parameters and function-locals call-frame slots; the
   interpreter and VM index a flat value stack instead of hashing names.
 - User-defined functions now compile and run on the bytecode VM (call frames,
-  `LoadLocal`/`StoreLocal`, a function table; `.kbc` format 5).
+  a function table, `LoadLocal`/`StoreLocal`).
 - `Value` is a 16-byte tagged union with intrusive refcounting, shared by the
   interpreter and VM, replacing the 40-byte `std::variant`.
+- Fused opcodes: `IncLocal`/`DecLocal` for `i += 1`, `ReturnLocal`/`ReturnConst`,
+  and `JumpIfFalse` now consumes its condition (`.kbc` format 8).
 - Net: recursive `fib(30)` went from ~28x slower than CPython to ~2x on the
-  interpreter and ~1.15x on the VM.
+  interpreter; the VM now runs `fib`, a plain loop, and a primes sieve
+  *faster* than CPython 3.14.
 
 ### Fixed
 

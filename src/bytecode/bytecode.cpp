@@ -145,7 +145,18 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
     }
     case NodeKind::Return: {
         const auto& return_statement = static_cast<const ReturnStatement&>(statement);
-        compile_expression(*return_statement.value);
+        const Expression& value = *return_statement.value;
+        if (value.kind == NodeKind::Identifier &&
+            static_cast<const IdentifierExpression&>(value).slot >= 0) {
+            emit(OpCode::ReturnLocal,
+                static_cast<std::size_t>(static_cast<const IdentifierExpression&>(value).slot));
+            return;
+        }
+        if (value.kind == NodeKind::Integer) {
+            emit(OpCode::ReturnConst, add_constant(static_cast<const IntegerExpression&>(value).value));
+            return;
+        }
+        compile_expression(value);
         emit(OpCode::Return);
         return;
     }
@@ -305,11 +316,19 @@ bool BytecodeVm::run(const Chunk& chunk) {
             instruction_pointer = function.address - 1;
             break;
         }
-        case OpCode::Return: {
+        case OpCode::Return:
+        case OpCode::ReturnLocal:
+        case OpCode::ReturnConst: {
             if (frames_.empty()) { report_error("return outside function"); return false; }
-            if (stack_.empty()) { report_error("stack underflow on return"); return false; }
-            Value result = std::move(stack_.back());
-            stack_.pop_back();
+            Value result;
+            if (instruction.opcode == OpCode::ReturnLocal) {
+                result = stack_[base_ + instruction.operand];
+            } else if (instruction.opcode == OpCode::ReturnConst) {
+                result = chunk.constants[instruction.operand];
+            } else {
+                if (stack_.empty()) { report_error("stack underflow on return"); return false; }
+                result = std::move(stack_.back());
+            }
             stack_.resize(base_);
             stack_.push_back(std::move(result));
             instruction_pointer = frames_.back().return_ip;
@@ -586,7 +605,8 @@ bool read_value(std::istream& input, Value& value) {
 }
 
 bool operand_is_constant_index(OpCode opcode) {
-    return opcode == OpCode::Constant || opcode == OpCode::Load || opcode == OpCode::Store;
+    return opcode == OpCode::Constant || opcode == OpCode::Load || opcode == OpCode::Store ||
+        opcode == OpCode::ReturnConst;
 }
 
 bool operand_is_jump_target(OpCode opcode) {
@@ -599,7 +619,8 @@ bool operand_is_count(OpCode opcode) {
 
 bool operand_is_slot(OpCode opcode) {
     return opcode == OpCode::LoadLocal || opcode == OpCode::StoreLocal ||
-        opcode == OpCode::IncLocal || opcode == OpCode::DecLocal;
+        opcode == OpCode::IncLocal || opcode == OpCode::DecLocal ||
+        opcode == OpCode::ReturnLocal;
 }
 
 constexpr std::uint64_t kMaxFunctions = 100'000ull;
