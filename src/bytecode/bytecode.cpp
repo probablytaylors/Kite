@@ -93,11 +93,9 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         const auto& conditional = static_cast<const IfStatement&>(statement);
         compile_expression(*conditional.condition);
         const std::size_t false_jump = emit_jump(OpCode::JumpIfFalse);
-        emit(OpCode::Pop);
         for (const auto& child : conditional.then_branch) compile_statement(*child);
         const std::size_t end_jump = emit_jump(OpCode::Jump);
         patch_jump(false_jump, chunk_.code.size());
-        emit(OpCode::Pop);
         for (const auto& child : conditional.else_branch) compile_statement(*child);
         patch_jump(end_jump, chunk_.code.size());
         return;
@@ -107,11 +105,9 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         const std::size_t start = chunk_.code.size();
         compile_expression(*loop.condition);
         const std::size_t end_jump = emit_jump(OpCode::JumpIfFalse);
-        emit(OpCode::Pop);
         for (const auto& child : loop.body) compile_statement(*child);
         emit(OpCode::Jump, start);
         patch_jump(end_jump, chunk_.code.size());
-        emit(OpCode::Pop);
         return;
     }
     case NodeKind::For: {
@@ -123,14 +119,12 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         if (has_condition) {
             compile_expression(*loop.condition);
             end_jump = emit_jump(OpCode::JumpIfFalse);
-            emit(OpCode::Pop);
         }
         for (const auto& child : loop.body) compile_statement(*child);
         if (loop.step != nullptr) compile_statement(*loop.step);
         emit(OpCode::Jump, start);
         if (has_condition) {
             patch_jump(end_jump, chunk_.code.size());
-            emit(OpCode::Pop);
         }
         return;
     }
@@ -334,10 +328,13 @@ bool BytecodeVm::run(const Chunk& chunk) {
         case OpCode::Jump:
             instruction_pointer = instruction.operand - 1;
             break;
-        case OpCode::JumpIfFalse:
+        case OpCode::JumpIfFalse: {
             if (stack_.empty()) { report_error("stack underflow on conditional jump"); return false; }
-            if (!stack_.back().is_truthy()) { instruction_pointer = instruction.operand - 1; }
+            const bool take_jump = !stack_.back().is_truthy();
+            stack_.pop_back();
+            if (take_jump) instruction_pointer = instruction.operand - 1;
             break;
+        }
         case OpCode::MakeArray: {
             if (stack_.size() < instruction.operand) { report_error("stack underflow on array construction"); return false; }
             Value array = Value::array();
