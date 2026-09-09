@@ -305,6 +305,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
                 report_error("invalid call target");
                 return false;
             }
+            if (frames_.size() >= 100000) { report_error("maximum call depth exceeded"); return false; }
             const FunctionInfo& function = chunk.functions[instruction.operand];
             if (stack_.size() < function.arity) { report_error("stack underflow on call"); return false; }
             const std::size_t new_base = stack_.size() - function.arity;

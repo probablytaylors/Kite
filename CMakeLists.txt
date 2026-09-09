@@ -51,4 +51,8 @@ endif()
 add_executable(kite ${kite_sources})
 target_link_libraries(kite PRIVATE kite_core)
 
+if(MSVC)
+    target_link_options(kite PRIVATE /STACK:16777216)
+endif()
+
 install(TARGETS kite RUNTIME DESTINATION bin)

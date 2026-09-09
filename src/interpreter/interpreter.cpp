@@ -791,6 +791,13 @@ bool Interpreter::execute_function(const FunctionStatement& function, std::size_
         return false;
     }
 
+    constexpr std::size_t kMaxCallDepth = 1000;
+    if (frame_bases_.size() >= kMaxCallDepth) {
+        report_error("maximum call depth exceeded");
+        stack_.resize(base);
+        return false;
+    }
+
     const bool previous_return_pending = return_pending_;
     Value previous_return_value = std::move(return_value_);
     return_pending_ = false;
@@ -800,14 +807,18 @@ bool Interpreter::execute_function(const FunctionStatement& function, std::size_
     stack_.resize(base + static_cast<std::size_t>(function.frame_size));
 
     const bool succeeded = execute_block(function.body);
-    if (succeeded) {
-        value = return_pending_ ? std::move(return_value_) : Value(std::string());
+    Value result;
+    if (succeeded && return_pending_) {
+        result = std::move(return_value_);
     }
     stack_.resize(base);
     frame_base_ = frame_bases_.back();
     frame_bases_.pop_back();
     return_pending_ = previous_return_pending;
     return_value_ = std::move(previous_return_value);
+    if (succeeded) {
+        value = std::move(result);
+    }
     return succeeded;
 }
 

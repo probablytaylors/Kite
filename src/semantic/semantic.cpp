@@ -187,8 +187,15 @@ SemanticType SemanticAnalyzer::analyze_expression(const Expression& expression) 
             if (right != SemanticType::Boolean && right != SemanticType::Unknown) report_error("logical operand must be boolean");
             return SemanticType::Boolean;
         }
-        if (binary->operator_type == BinaryOperator::Add && left == SemanticType::String && right == SemanticType::String) return SemanticType::String;
         if (binary->operator_type >= BinaryOperator::Equal) return SemanticType::Boolean;
+        if (binary->operator_type == BinaryOperator::Add) {
+            const bool left_stringish = left == SemanticType::String || left == SemanticType::Unknown;
+            const bool right_stringish = right == SemanticType::String || right == SemanticType::Unknown;
+            if ((left == SemanticType::String && right_stringish) ||
+                (right == SemanticType::String && left_stringish)) {
+                return SemanticType::String;
+            }
+        }
         if ((!is_numeric(left) && left != SemanticType::Unknown) ||
             (!is_numeric(right) && right != SemanticType::Unknown)) {
             report_error("arithmetic operands must be numeric");
