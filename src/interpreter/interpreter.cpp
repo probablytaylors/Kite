@@ -38,7 +38,8 @@ bool Interpreter::execute(const Program& program) {
     functions_.clear();
     return_pending_ = false;
     for (const auto& statement : program.statements) {
-        if (const auto* function = dynamic_cast<const FunctionStatement*>(statement.get())) {
+        if (statement->kind == NodeKind::Function) {
+            const auto* function = static_cast<const FunctionStatement*>(statement.get());
             functions_[function->name] = function;
         }
     }
@@ -63,38 +64,41 @@ const std::vector<std::string>& Interpreter::errors() const {
 }
 
 bool Interpreter::execute_statement(const Statement& statement) {
-    if (const auto* let = dynamic_cast<const LetStatement*>(&statement)) {
+    switch (statement.kind) {
+    case NodeKind::Let: {
+        const auto& let = static_cast<const LetStatement&>(statement);
         Value value;
-        if (!evaluate(*let->initializer, value)) {
+        if (!evaluate(*let.initializer, value)) {
             return false;
         }
-
-        scopes_.back()[let->name] = std::move(value);
+        scopes_.back()[let.name] = std::move(value);
         return true;
     }
 
-    if (const auto* assignment = dynamic_cast<const AssignmentStatement*>(&statement)) {
+    case NodeKind::Assignment: {
+        const auto& assignment = static_cast<const AssignmentStatement&>(statement);
         Value value;
-        if (!evaluate(*assignment->value, value)) {
+        if (!evaluate(*assignment.value, value)) {
             return false;
         }
-        Value* variable = find_variable(assignment->name);
+        Value* variable = find_variable(assignment.name);
         if (variable == nullptr) {
-            report_error("unknown variable: " + assignment->name);
+            report_error("unknown variable: " + assignment.name);
             return false;
         }
         *variable = std::move(value);
         return true;
     }
 
-    if (const auto* expression = dynamic_cast<const ExpressionStatement*>(&statement)) {
+    case NodeKind::ExpressionStatement: {
         Value value;
-        return evaluate(*expression->expression, value);
+        return evaluate(*static_cast<const ExpressionStatement&>(statement).expression, value);
     }
 
-    if (const auto* conditional = dynamic_cast<const IfStatement*>(&statement)) {
+    case NodeKind::If: {
+        const auto& conditional = static_cast<const IfStatement&>(statement);
         Value condition;
-        if (!evaluate(*conditional->condition, condition)) {
+        if (!evaluate(*conditional.condition, condition)) {
             return false;
         }
         const auto* boolean = std::get_if<bool>(&condition);
@@ -103,17 +107,17 @@ bool Interpreter::execute_statement(const Statement& statement) {
             return false;
         }
         return *boolean
-            ? execute_block(conditional->then_branch)
-            : execute_block(conditional->else_branch);
+            ? execute_block(conditional.then_branch)
+            : execute_block(conditional.else_branch);
     }
 
-    if (const auto* loop = dynamic_cast<const WhileStatement*>(&statement)) {
+    case NodeKind::While: {
+        const auto& loop = static_cast<const WhileStatement&>(statement);
         while (true) {
             Value condition;
-            if (!evaluate(*loop->condition, condition)) {
+            if (!evaluate(*loop.condition, condition)) {
                 return false;
             }
-
             const auto* boolean = std::get_if<bool>(&condition);
             if (boolean == nullptr) {
                 report_error("while condition must be boolean");
@@ -122,7 +126,7 @@ bool Interpreter::execute_statement(const Statement& statement) {
             if (!*boolean) {
                 return true;
             }
-            if (!execute_block(loop->body)) {
+            if (!execute_block(loop.body)) {
                 return false;
             }
             if (return_pending_) {
@@ -131,14 +135,15 @@ bool Interpreter::execute_statement(const Statement& statement) {
         }
     }
 
-    if (const auto* loop = dynamic_cast<const ForStatement*>(&statement)) {
-        if (loop->initializer != nullptr && !execute_statement(*loop->initializer)) {
+    case NodeKind::For: {
+        const auto& loop = static_cast<const ForStatement&>(statement);
+        if (loop.initializer != nullptr && !execute_statement(*loop.initializer)) {
             return false;
         }
         while (true) {
-            if (loop->condition != nullptr) {
+            if (loop.condition != nullptr) {
                 Value condition;
-                if (!evaluate(*loop->condition, condition)) {
+                if (!evaluate(*loop.condition, condition)) {
                     return false;
                 }
                 const auto* boolean = std::get_if<bool>(&condition);
@@ -150,104 +155,109 @@ bool Interpreter::execute_statement(const Statement& statement) {
                     return true;
                 }
             }
-            if (!execute_block(loop->body)) {
+            if (!execute_block(loop.body)) {
                 return false;
             }
             if (return_pending_) {
                 return true;
             }
-            if (loop->step != nullptr && !execute_statement(*loop->step)) {
+            if (loop.step != nullptr && !execute_statement(*loop.step)) {
                 return false;
             }
         }
     }
 
-    if (const auto* function = dynamic_cast<const FunctionStatement*>(&statement)) {
+    case NodeKind::Function:
         return true;
-    }
 
-    if (const auto* return_statement = dynamic_cast<const ReturnStatement*>(&statement)) {
-        if (return_statement->value == nullptr) {
+    case NodeKind::Return: {
+        const auto& return_statement = static_cast<const ReturnStatement&>(statement);
+        if (return_statement.value == nullptr) {
             report_error("return requires a value");
             return false;
         }
-        if (!evaluate(*return_statement->value, return_value_)) {
+        if (!evaluate(*return_statement.value, return_value_)) {
             return false;
         }
         return_pending_ = true;
         return true;
     }
 
-    report_error("unsupported statement");
-    return false;
+    default:
+        report_error("unsupported statement");
+        return false;
+    }
 }
 
 bool Interpreter::evaluate(const Expression& expression, Value& value) {
-    if (const auto* boolean = dynamic_cast<const BooleanExpression*>(&expression)) {
-        value = boolean->value;
+    switch (expression.kind) {
+    case NodeKind::Boolean:
+        value = static_cast<const BooleanExpression&>(expression).value;
         return true;
-    }
-
-    if (const auto* integer = dynamic_cast<const IntegerExpression*>(&expression)) {
-        value = integer->value;
+    case NodeKind::Integer:
+        value = static_cast<const IntegerExpression&>(expression).value;
         return true;
-    }
-
-    if (const auto* floating_point = dynamic_cast<const FloatExpression*>(&expression)) {
-        value = floating_point->value;
+    case NodeKind::Float:
+        value = static_cast<const FloatExpression&>(expression).value;
         return true;
-    }
-
-    if (const auto* string = dynamic_cast<const StringExpression*>(&expression)) {
-        value = string->value;
+    case NodeKind::String:
+        value = static_cast<const StringExpression&>(expression).value;
         return true;
+    case NodeKind::Array:
+        return evaluate_array(static_cast<const ArrayExpression&>(expression), value);
+    case NodeKind::Map:
+        return evaluate_map(static_cast<const MapExpression&>(expression), value);
+    case NodeKind::Index:
+        return evaluate_index(static_cast<const IndexExpression&>(expression), value);
+    case NodeKind::Identifier:
+        return evaluate_identifier(static_cast<const IdentifierExpression&>(expression), value);
+    case NodeKind::Call:
+        return evaluate_call(static_cast<const CallExpression&>(expression), value);
+    case NodeKind::Binary:
+        return evaluate_binary(static_cast<const BinaryExpression&>(expression), value);
+    case NodeKind::Unary:
+        return evaluate_unary(static_cast<const UnaryExpression&>(expression), value);
+    default:
+        report_error("unsupported expression");
+        return false;
     }
+}
 
-    if (const auto* array = dynamic_cast<const ArrayExpression*>(&expression)) {
-        auto result = std::make_shared<ArrayValue>();
-        for (const auto& element : array->elements) {
-            Value element_value;
-            if (!evaluate(*element, element_value)) {
-                return false;
-            }
-            result->elements.push_back(std::move(element_value));
+bool Interpreter::evaluate_array(const ArrayExpression& array, Value& value) {
+    auto result = std::make_shared<ArrayValue>();
+    for (const auto& element : array.elements) {
+        Value element_value;
+        if (!evaluate(*element, element_value)) {
+            return false;
         }
-        value = std::move(result);
-        return true;
+        result->elements.push_back(std::move(element_value));
     }
+    value = std::move(result);
+    return true;
+}
 
-    if (const auto* map = dynamic_cast<const MapExpression*>(&expression)) {
-        auto result = std::make_shared<MapValue>();
-        for (const auto& entry : map->entries) {
-            Value key;
-            Value entry_value;
-            if (!evaluate(*entry.first, key) || !evaluate(*entry.second, entry_value)) {
-                return false;
-            }
-            const auto* string_key = std::get_if<std::string>(&key);
-            if (string_key == nullptr) {
-                report_error("map keys must be strings");
-                return false;
-            }
-            (*result).entries[*string_key] = std::move(entry_value);
+bool Interpreter::evaluate_map(const MapExpression& map, Value& value) {
+    auto result = std::make_shared<MapValue>();
+    for (const auto& entry : map.entries) {
+        Value key;
+        Value entry_value;
+        if (!evaluate(*entry.first, key) || !evaluate(*entry.second, entry_value)) {
+            return false;
         }
-        value = std::move(result);
-        return true;
+        const auto* string_key = std::get_if<std::string>(&key);
+        if (string_key == nullptr) {
+            report_error("map keys must be strings");
+            return false;
+        }
+        result->entries[*string_key] = std::move(entry_value);
     }
+    value = std::move(result);
+    return true;
+}
 
-    if (const auto* index = dynamic_cast<const IndexExpression*>(&expression)) {
-        return evaluate_index(*index, value);
-    }
-
-    if (const auto* identifier = dynamic_cast<const IdentifierExpression*>(&expression)) {
-        return evaluate_identifier(*identifier, value);
-    }
-
-    if (const auto* call = dynamic_cast<const CallExpression*>(&expression)) {
-        return evaluate_call(*call, value);
-    }
-
-    if (const auto* binary = dynamic_cast<const BinaryExpression*>(&expression)) {
+bool Interpreter::evaluate_binary(const BinaryExpression& binary_ref, Value& value) {
+    const BinaryExpression* binary = &binary_ref;
+    {
         Value left;
         if (!evaluate(*binary->left, left)) {
             return false;
@@ -394,46 +404,43 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
         }
         return true;
     }
+}
 
-    if (const auto* unary = dynamic_cast<const UnaryExpression*>(&expression)) {
-        Value operand;
-        if (!evaluate(*unary->operand, operand)) {
-            return false;
-        }
-        if (const auto* integer = std::get_if<std::int64_t>(&operand)) {
-            value = -*integer;
-            return true;
-        }
-        if (const auto* floating_point = std::get_if<double>(&operand)) {
-            if (unary->operator_type == UnaryOperator::Not) {
-                report_error("unary '!' requires a boolean value");
-                return false;
-            }
-            value = -*floating_point;
-            return true;
-        }
-        if (unary->operator_type == UnaryOperator::Not) {
-            if (const auto* boolean = std::get_if<bool>(&operand)) {
-                value = !*boolean;
-                return true;
-            }
+bool Interpreter::evaluate_unary(const UnaryExpression& unary, Value& value) {
+    Value operand;
+    if (!evaluate(*unary.operand, operand)) {
+        return false;
+    }
+    if (const auto* integer = std::get_if<std::int64_t>(&operand)) {
+        value = -*integer;
+        return true;
+    }
+    if (const auto* floating_point = std::get_if<double>(&operand)) {
+        if (unary.operator_type == UnaryOperator::Not) {
             report_error("unary '!' requires a boolean value");
             return false;
         }
-        report_error("unary '-' requires a numeric value");
+        value = -*floating_point;
+        return true;
+    }
+    if (unary.operator_type == UnaryOperator::Not) {
+        if (const auto* boolean = std::get_if<bool>(&operand)) {
+            value = !*boolean;
+            return true;
+        }
+        report_error("unary '!' requires a boolean value");
         return false;
     }
-
-    report_error("unsupported expression");
+    report_error("unary '-' requires a numeric value");
     return false;
 }
 
 bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
-    const auto* callee = dynamic_cast<const IdentifierExpression*>(call.callee.get());
-    if (callee == nullptr) {
+    if (call.callee->kind != NodeKind::Identifier) {
         report_error("unknown function");
         return false;
     }
+    const auto* callee = static_cast<const IdentifierExpression*>(call.callee.get());
 
     if (callee->name == "print") {
         for (std::size_t index = 0; index < call.arguments.size(); ++index) {

@@ -37,6 +37,10 @@ private:
     bool execute_block(const std::vector<std::unique_ptr<Statement>>& statements);
     bool execute_function(const FunctionStatement& function, const std::vector<Value>& arguments, Value& value);
     bool evaluate(const Expression& expression, Value& value);
+    bool evaluate_binary(const BinaryExpression& binary, Value& value);
+    bool evaluate_unary(const UnaryExpression& unary, Value& value);
+    bool evaluate_array(const ArrayExpression& array, Value& value);
+    bool evaluate_map(const MapExpression& map, Value& value);
     bool evaluate_call(const CallExpression& call, Value& value);
     bool evaluate_index(const IndexExpression& index, Value& value);
     bool evaluate_identifier(const IdentifierExpression& identifier, Value& value);
