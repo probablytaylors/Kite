@@ -1,24 +1,16 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <ostream>
 #include <string>
 #include <unordered_map>
-#include <variant>
 #include <vector>
 
 #include "kite/ast/ast.hpp"
+#include "kite/value.hpp"
 
 namespace kite {
-
-struct BytecodeArray;
-struct BytecodeMap;
-using BytecodeValue = std::variant<bool, std::int64_t, double, std::string,
-    std::shared_ptr<BytecodeArray>, std::shared_ptr<BytecodeMap>>;
-
-struct BytecodeArray { std::vector<BytecodeValue> elements; };
-struct BytecodeMap { std::unordered_map<std::string, BytecodeValue> entries; };
 
 enum class OpCode {
     Constant,
@@ -65,7 +57,7 @@ struct FunctionInfo {
 };
 
 struct Chunk {
-    std::vector<BytecodeValue> constants;
+    std::vector<Value> constants;
     std::vector<Instruction> code;
     std::vector<FunctionInfo> functions;
 };
@@ -76,7 +68,7 @@ public:
     const std::vector<std::string>& errors() const;
 
 private:
-    std::size_t add_constant(BytecodeValue value);
+    std::size_t add_constant(Value value);
     void emit(OpCode opcode, std::size_t operand = 0);
     void report_error(const std::string& message);
     void compile_statement(const Statement& statement);
@@ -103,24 +95,21 @@ private:
     };
 
     bool binary_operation(OpCode opcode);
-    bool is_truthy(const BytecodeValue& value) const;
     void report_error(const std::string& message);
 
     std::ostream& output_;
-    std::vector<BytecodeValue> stack_;
+    std::vector<Value> stack_;
     std::vector<Frame> frames_;
     std::size_t base_ = 0;
-    std::unordered_map<std::string, BytecodeValue> variables_;
+    std::unordered_map<std::string, Value> variables_;
     std::vector<std::string> errors_;
 };
 
 inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};
-inline constexpr std::uint32_t kBytecodeFormatVersion = 4;
+inline constexpr std::uint32_t kBytecodeFormatVersion = 5;
 
 bool validate_chunk(const Chunk& chunk, std::string& error);
 bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error);
 bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error);
-
-std::string bytecode_value_to_string(const BytecodeValue& value);
 
 } // namespace kite
