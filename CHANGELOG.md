@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-09-09
 
 ### Language
 
@@ -47,7 +47,16 @@
   `contains`, `index_of`, `replace`, `trim`, `keys`, `has`, `remove`, `ord`,
   `chr`, `push`, `input`, `args`, `env`, `range`.
 - The VM short-circuits `&&` / `||`.
-- `.kbc` format 12: `PushHandler` / `PopHandler` / `Throw` opcodes for `try`.
+- `.kbc` format 13: `PushHandler` / `PopHandler` / `Throw` opcodes for `try`,
+  and `MakeStruct` for struct literals.
+- A module loader (`src/module/`) resolves `import` before semantic analysis.
+
+### Tooling
+
+- `kite update` shows the installed and latest versions side by side, lists
+  what changed from the release's changelog, asks before installing (skip with
+  `--yes`), and downloads with a progress bar. `--check` reports without
+  installing.
 
 ### Fixed
 

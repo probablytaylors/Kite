@@ -28,8 +28,9 @@ kite --version
 kite run your-program.kite
 ```
 
-`kite update` fetches the latest release and installs it in place; `kite update
---check` just reports whether a newer version is available.
+`kite update` shows the installed and latest versions, lists what changed, asks
+before installing, and downloads with a progress bar. `kite update --check`
+reports without installing; `kite update --yes` skips the prompt.
 
 ## The language
 
