@@ -1,34 +1,38 @@
 # Architecture
 
-Kite is organized as a sequence of replaceable language components:
+A Kite program goes through five stages:
 
-1. Source text enters the lexer.
-2. Tokens are consumed by the parser.
-3. The parser produces an AST.
-4. Semantic analysis validates the AST.
-5. The interpreter or bytecode VM executes it.
-6. Runtime, types, standard library, and modules extend it.
+```
+source -> lexer -> parser -> semantic analysis -> interpreter or bytecode VM
+```
 
-The lexer and token model are implemented today. The parser consumes those
-tokens and builds a small AST for declarations, literals, identifiers, and
-calls. The interpreter evaluates integer and string values, stores variables,
-provides `print`, evaluates numeric arithmetic, and executes conditional
-blocks and while loops. The remaining components are planned boundaries; they should be added
-when each stage of the language needs them rather than as empty source files.
-Function calls create local scopes and can propagate return values, including
-through recursive calls.
-Arrays are represented as runtime values and support literal construction and
-read-only integer indexing. Mutation and richer collection types remain future
-work.
+The **lexer** (`src/lexer/`) turns source text into a flat token stream. The
+**parser** (`src/parser/`) is recursive descent with precedence climbing for
+expressions; it produces an AST of `Statement` and `Expression` nodes defined
+in `include/kite/ast/ast.hpp`. **Semantic analysis** (`src/semantic/`) walks the
+AST once before execution and checks the things that are cheap to catch early:
+undefined names, assignment to unknown variables, non-boolean conditions, bad
+index types, `return` outside a function, and non-numeric arithmetic.
 
-The initial bytecode layer compiles a supported expression subset into a
-constant pool and instruction stream. A stack VM executes those instructions;
-the tree-walking interpreter remains the complete runtime path for features
-not yet represented in bytecode. Control flow and collection construction are
-now represented; user-defined function frames remain on the compiler roadmap.
+Execution then happens one of two ways.
 
-A `Chunk` can be serialized to a versioned on-disk artifact (`kite build`) and
-loaded back (`kite exec`). Loading runs `validate_chunk`, which checks that
-every constant-pool index and jump target is in range, so a corrupt artifact
-is rejected before the VM sees it. The tree-walking interpreter is the
-reference semantics for any program the bytecode compiler also accepts.
+The **interpreter** (`src/interpreter/`) walks the AST directly. It's the
+complete runtime: every language feature works here. Functions get their own
+scope, recursion works, arrays and maps are reference values, and the built-ins
+live in `evaluate_call`.
+
+The **bytecode compiler and VM** (`src/bytecode/`) are the second path. The
+compiler lowers the AST into a `Chunk` -- a constant pool plus a flat
+instruction stream -- and a stack machine runs it. The VM handles expressions,
+control flow, and collections, but not user-defined function calls yet, so
+programs that call their own functions still run on the interpreter. Where the
+two overlap, the interpreter is the reference: the VM is expected to produce
+identical output.
+
+A `Chunk` can be written to a versioned `.kbc` file with `kite build` and read
+back with `kite exec`. `load_bytecode` runs `validate_chunk` first, which
+confirms every constant-pool index and jump target is in range, so a truncated
+or tampered file is rejected instead of crashing the VM.
+
+Planned but not built: function call frames in the VM, a module/import system,
+user-defined types, and a static type system feeding a native backend.

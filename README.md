@@ -1,136 +1,118 @@
 # Kite
 
-Kite is a programming language built from scratch in C++.
+A small scripting language I'm building from scratch in C++. It's dynamically
+typed and runs `.kite` files through a tree-walking interpreter, with a bytecode
+VM coming together alongside it.
+
+```
+fn fib(n) {
+    if (n < 2) { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+for (let i = 0; i < 10; i += 1) {
+    print(fib(i))
+}
+```
 
 ## Install
 
-Download `kite-setup.exe` from the [latest release](https://github.com/probablytaylors/Kite/releases)
-and run it. It installs `kite.exe`, adds it to `PATH`, and registers the
-`.kite` extension. Then:
+Windows only for now. Download `kite-setup.exe` from the
+[releases page](https://github.com/probablytaylors/Kite/releases) and run it.
+It puts `kite.exe` in `Program Files`, adds it to `PATH`, and associates
+`.kite` files.
 
-```powershell
+```
 kite --version
-kite run examples\hello.kite
+kite run hello.kite
 ```
 
-## Current Status
+## The language
 
-The lexer, parser, AST, semantic analyzer, interpreter, and bytecode VM are
-implemented. Kite runs source files: arithmetic, comparisons, boolean logic,
-`if`/`else if`/`else`, `while` and `for` loops, functions with recursion,
-arrays and maps, string handling, file I/O, and standard-library helpers.
+Variables with `let`, functions with `fn`, C-style control flow:
 
-## Project Structure
+```
+let name = "Kite"
+let scores = [82, 91, 74]
+let total = 0
 
-```text
-.
-├── .github/workflows/       CI and release automation
-├── cmake/                   Generated version header and Windows resource
-├── docs/                    Architecture and language notes
-├── examples/                Sample Kite programs
-├── include/kite/            Public C++ headers
-├── installer/               Inno Setup installer script and icon
-├── src/                     Lexer, parser, semantic analyzer, interpreter, bytecode VM
-├── std/                     Source-level standard library modules
-├── tools/                   Future developer tools
-├── CMakeLists.txt
-├── CHANGELOG.md
-└── LICENSE
+for (let i = 0; i < len(scores); i += 1) {
+    total += scores[i]
+}
+
+if (total / len(scores) >= 80) {
+    print(name + ": pass")
+} else {
+    print(name + ": retake")
+}
 ```
 
-## Build from source
+Numbers are 64-bit integers or doubles; `/` always gives a double, `%` is
+remainder. Strings take `+` and the `\n \t \r \0 \\ \"` escapes. There are
+arrays, string-keyed maps, `if`/`else if`/`else`, `while` and `for`, recursion,
+and short-circuiting `&&` / `||`.
 
-From a PowerShell terminal at the repository root:
+Built-ins: `print`, `len`, `upper`, `lower`, `type_of`, `append`, `pop`,
+`read_file`, `write_file`, and the usual math functions (`sqrt`, `pow`, trig,
+`floor`, `min`, `max`, and so on). The `std/` directory has a few more helpers
+written in Kite itself.
 
-```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Debug
+See [docs/language-reference.md](docs/language-reference.md) for the full
+picture and [docs/architecture.md](docs/architecture.md) for how the
+implementation fits together.
+
+## Commands
+
+```
+kite run FILE               run a source file
+kite run --bytecode FILE     run it on the bytecode VM instead
+kite build FILE -o OUT.kbc   compile to a bytecode file
+kite exec OUT.kbc            run a compiled bytecode file
 ```
 
-The executable is written to `build/Debug/kite.exe`.
+The `.kbc` format is versioned. `kite exec` checks every constant reference and
+jump target against the chunk before running, so a corrupt or hand-edited file
+is rejected rather than executed.
 
-## Run
+The interpreter runs everything. The bytecode VM covers most of the language
+except user-defined function calls, which still fall back to the interpreter.
 
-```powershell
-.\build\Debug\kite.exe examples\hello.kite
+## Building from source
+
+You need CMake and Visual Studio 2022 (C++20).
+
+```
+cmake -S . -B build -A x64
+cmake --build build
 ```
 
-The command reads, parses, and executes a Kite source file.
+`build\Debug\kite.exe` is the result. Pass `-D KITE_WERROR=ON` to treat
+warnings as errors. To rebuild the installer you also need
+[Inno Setup](https://jrsoftware.org/isinfo.php):
 
-### Bytecode VM
-
-The bytecode compiler and stack VM can be selected with:
-
-```powershell
-.\build\Debug\kite.exe run --bytecode examples\calculator.kite
 ```
-
-### Compiled artifacts
-
-`kite build` compiles a source file to a `.kbc` bytecode artifact, and
-`kite exec` runs one without touching the front end:
-
-```powershell
-.\build\Debug\kite.exe build examples\calculator.kite -o calculator.kbc
-.\build\Debug\kite.exe exec calculator.kbc
-```
-
-The artifact format is versioned. `kite exec` validates every operand against
-the constant pool and code bounds before running, so a truncated or corrupt
-artifact is rejected rather than executed. `--bytecode` remains an alias for
-`run --bytecode`.
-
-Configure with `-D KITE_WERROR=ON` to treat compiler warnings as errors.
-
-## Installer
-
-`installer/kite.iss` builds a Windows installer with [Inno Setup](https://jrsoftware.org/isinfo.php).
-It installs `kite.exe`, adds it to `PATH`, and registers the `.kite` extension.
-
-```powershell
 cmake --build build --config Release
 iscc installer\kite.iss
 ```
 
-The installer is written to `installer\output\kite-setup.exe`.
+## Layout
 
-## CMake Targets
+```
+src/  include/kite/   lexer, parser, semantic pass, interpreter, bytecode VM
+std/                   standard library, written in Kite
+examples/              sample programs
+installer/             Inno Setup script and icon
+docs/                  architecture and language notes
+```
 
-- `kite_core`: static library with the lexer, parser, AST, semantic analyzer, interpreter, and bytecode VM.
-- `kite`: command-line Kite tool (`run`, `build`, `exec`).
+## Roadmap
 
-## Development Roadmap
+Done: the front end and semantic pass, the interpreter, the bytecode compiler
+and VM, `.kbc` artifacts, and the Windows installer.
 
-- [x] Initial lexer, token model, and command-line tool
-- [x] Initial parser and AST
-- [x] Initial interpreter with variables and `print`
-- [x] Integer and floating-point arithmetic with operator precedence
-- [x] Booleans, comparisons, and `if`/`else`
-- [x] `while` loops
-- [x] User-defined functions with parameters, returns, local scope, and recursion
-- [x] Array literals and read-only indexing
-- [x] Maps with string-key lookup
-- [x] Basic string and collection utilities
-- [x] Variable assignment and string concatenation
-- [x] Boolean logic with short-circuit evaluation
-- [x] Basic file read/write built-ins
-- [x] Semantic analysis and richer type checking
-- [x] Runtime type inspection and mutable array operations
-- [x] Initial bytecode compiler and stack VM
-- [x] Initial standard math functions
-- [x] Expanded math functions
-- [x] Initial source-level standard library modules
-- [x] Bytecode control flow and collection literals/indexing
-- [x] Bytecode artifacts: `kite build` / `kite exec` with a validated on-disk format
-- [x] `%`, compound assignment, `else if`, `for` loops, string escapes
-- [x] Windows installer (Inno Setup)
-- [ ] Richer static inference and user-defined types
-- [ ] Maps mutation and collection methods
-- [ ] Modules and imports
-- [ ] Bytecode function call frames and returns
-- [ ] Standalone executables (bundle a `.kbc` artifact with the runtime)
-- [ ] Tooling such as a REPL, formatter, debugger, and package manager
+Next: function call frames in the VM, map mutation, an import system, and
+further out, a static type system with native compilation.
 
-See [docs/architecture.md](docs/architecture.md),
-[docs/language-notes.md](docs/language-notes.md), and the
-[language reference](docs/language-reference.md) for current documentation.
+## License
+
+MIT. See [LICENSE](LICENSE).

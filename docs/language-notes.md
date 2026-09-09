@@ -23,11 +23,8 @@ The first source-level syntax supports:
 - Whitespace and newlines as separators rather than tokens.
 
 Unknown characters and unterminated strings produce invalid tokens with source
-line and column information. `print` is currently lexed as an identifier; it
-will become a language feature when the parser and runtime are implemented.
-
-The command-line tool reads a source file and passes it through the lexer,
-parser, and interpreter.
+line and column information. `print` is lexed as an identifier and handled as a
+built-in at runtime rather than as a keyword.
 
 ## Parser Milestone
 

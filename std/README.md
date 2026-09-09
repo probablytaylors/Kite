@@ -8,10 +8,8 @@ These files are the first Kite standard-library modules:
 - `io.kite`: `read_text` and `write_text`.
 
 They use the current language and existing built-ins. The module loader is not
-implemented yet, so these files are currently validated as standalone Kite
-source and are not imported automatically by programs.
-
-The modules are covered by `kite_stdlib_tests` through CTest.
+implemented yet, so these files are standalone Kite source and are not imported
+automatically by programs.
 
 The planned import syntax is:
 
