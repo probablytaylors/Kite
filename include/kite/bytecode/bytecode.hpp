@@ -50,6 +50,9 @@ enum class OpCode {
     Return,
     ReturnLocal,
     ReturnConst,
+    PushHandler,
+    PopHandler,
+    Throw,
     Halt
 };
 
@@ -79,6 +82,7 @@ private:
     struct LoopContext {
         std::vector<std::size_t> break_jumps;
         std::vector<std::size_t> continue_jumps;
+        int handler_depth = 0;
     };
 
     std::size_t add_constant(Value value);
@@ -92,6 +96,7 @@ private:
     Chunk chunk_;
     std::unordered_map<std::string, std::size_t> function_indices_;
     std::vector<LoopContext> loops_;
+    int handler_depth_ = 0;
     std::vector<std::string> errors_;
 };
 
@@ -108,19 +113,26 @@ private:
         std::size_t base;
     };
 
+    struct Handler {
+        std::size_t target;
+        std::size_t stack_depth;
+        std::size_t frame_depth;
+    };
+
     bool binary_operation(OpCode opcode);
     void report_error(const std::string& message);
 
     std::ostream& output_;
     std::vector<Value> stack_;
     std::vector<Frame> frames_;
+    std::vector<Handler> handlers_;
     std::size_t base_ = 0;
     std::unordered_map<std::string, Value> variables_;
     std::vector<std::string> errors_;
 };
 
 inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};
-inline constexpr std::uint32_t kBytecodeFormatVersion = 11;
+inline constexpr std::uint32_t kBytecodeFormatVersion = 12;
 
 bool validate_chunk(const Chunk& chunk, std::string& error);
 bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error);

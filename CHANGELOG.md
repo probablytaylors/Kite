@@ -9,6 +9,9 @@
   compile-time error.
 - `for name in iterable` over arrays, strings, and maps (keys, sorted), plus
   `range(n)` / `range(start, stop)` / `range(start, stop, step)`.
+- `try { } catch (err) { }` and `throw value`. Any runtime error (a failed
+  built-in, a bad index, division by zero, or a `throw`) is caught as a string.
+  Works on the interpreter and the bytecode VM; native mode rejects it.
 - `#` line comments.
 - Integer division: `int / int` is now integer, matching C/Go/Rust; a float
   operand still gives a float.
@@ -34,6 +37,7 @@
   `contains`, `index_of`, `replace`, `trim`, `keys`, `has`, `remove`, `ord`,
   `chr`, `push`, `input`, `args`, `env`, `range`.
 - The VM short-circuits `&&` / `||`.
+- `.kbc` format 12: `PushHandler` / `PopHandler` / `Throw` opcodes for `try`.
 
 ### Fixed
 

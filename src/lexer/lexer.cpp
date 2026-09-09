@@ -80,6 +80,12 @@ Token Lexer::scan_identifier_or_keyword() {
         type = TokenType::Break;
     } else if (lexeme == "continue") {
         type = TokenType::Continue;
+    } else if (lexeme == "try") {
+        type = TokenType::Try;
+    } else if (lexeme == "catch") {
+        type = TokenType::Catch;
+    } else if (lexeme == "throw") {
+        type = TokenType::Throw;
     } else if (lexeme == "true") {
         type = TokenType::True;
     } else if (lexeme == "false") {

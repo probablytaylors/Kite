@@ -30,6 +30,8 @@ enum class NodeKind {
     Return,
     Break,
     Continue,
+    Try,
+    Throw,
     Function
 };
 
@@ -220,6 +222,21 @@ struct BreakStatement final : Statement {
 
 struct ContinueStatement final : Statement {
     ContinueStatement() : Statement(NodeKind::Continue) {}
+};
+
+struct TryStatement final : Statement {
+    TryStatement() : Statement(NodeKind::Try) {}
+
+    std::vector<std::unique_ptr<Statement>> try_branch;
+    std::string name;
+    std::vector<std::unique_ptr<Statement>> catch_branch;
+    int slot = kGlobalSlot;
+};
+
+struct ThrowStatement final : Statement {
+    ThrowStatement() : Statement(NodeKind::Throw) {}
+
+    std::unique_ptr<Expression> value;
 };
 
 struct FunctionStatement final : Statement {

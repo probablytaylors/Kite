@@ -26,6 +26,12 @@ const char* token_type_name(TokenType type) {
         return "BREAK";
     case TokenType::Continue:
         return "CONTINUE";
+    case TokenType::Try:
+        return "TRY";
+    case TokenType::Catch:
+        return "CATCH";
+    case TokenType::Throw:
+        return "THROW";
     case TokenType::True:
         return "TRUE";
     case TokenType::False:

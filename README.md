@@ -55,8 +55,8 @@ Numbers are 64-bit integers or doubles; `int / int` truncates to an integer, a
 float operand makes it a float, `%` is remainder. Strings take `+`, integer
 indexing, and the `\n \t \r \0 \\ \"` escapes. There are arrays and string-keyed
 maps (both assignable by index), `if`/`else if`/`else`, C-style `for`,
-`for x in collection`, `while`, `break` / `continue`, recursion,
-short-circuiting `&&` / `||`, and `#` comments.
+`for x in collection`, `while`, `break` / `continue`, `try`/`catch` with
+`throw`, recursion, short-circuiting `&&` / `||`, and `#` comments.
 
 Built-ins: `print`, `len`, `type_of`, `str`/`int`/`float`, `range`, `upper`,
 `lower`, `trim`, `split`, `join`, `substring`, `replace`, `contains`,
@@ -120,8 +120,8 @@ Done: the front end and semantic pass, the interpreter, the bytecode compiler
 and VM (the full dynamic language, including function call frames), `.kbc`
 artifacts, native compilation of a typed subset, and the Windows installer.
 
-Next: an import system, user-defined types, error handling, and widening the
-native compiler to cover strings and collections.
+Next: an import system, user-defined types, and widening the native compiler to
+cover strings and collections.
 
 ## License
 

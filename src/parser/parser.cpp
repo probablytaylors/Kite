@@ -126,6 +126,12 @@ std::unique_ptr<Statement> Parser::parse_statement() {
     if (current_.type == TokenType::Return) {
         return parse_return_statement();
     }
+    if (current_.type == TokenType::Try) {
+        return parse_try_statement();
+    }
+    if (current_.type == TokenType::Throw) {
+        return parse_throw_statement();
+    }
     if (current_.type == TokenType::Break) {
         advance();
         return std::make_unique<BreakStatement>();
@@ -382,6 +388,38 @@ std::unique_ptr<Statement> Parser::parse_return_statement() {
         return nullptr;
     }
     return statement;
+}
+
+std::unique_ptr<Statement> Parser::parse_try_statement() {
+    advance();
+    if (!expect(TokenType::LeftBrace, "expected '{' after 'try'")) {
+        return nullptr;
+    }
+    auto statement = std::make_unique<TryStatement>();
+    statement->try_branch = parse_block();
+    if (!expect(TokenType::Catch, "expected 'catch' after the try block") ||
+        !expect(TokenType::LeftParen, "expected '(' after 'catch'")) {
+        return nullptr;
+    }
+    if (current_.type != TokenType::Identifier) {
+        report_error("expected a name for the caught error");
+        return nullptr;
+    }
+    statement->name = current_.lexeme;
+    advance();
+    if (!expect(TokenType::RightParen, "expected ')' after the catch name") ||
+        !expect(TokenType::LeftBrace, "expected '{' before the catch block")) {
+        return nullptr;
+    }
+    statement->catch_branch = parse_block();
+    return statement;
+}
+
+std::unique_ptr<Statement> Parser::parse_throw_statement() {
+    advance();
+    auto statement = std::make_unique<ThrowStatement>();
+    statement->value = parse_expression();
+    return statement->value ? std::move(statement) : nullptr;
 }
 
 std::unique_ptr<Statement> Parser::parse_expression_statement() {

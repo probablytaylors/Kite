@@ -150,6 +150,11 @@ String literals process the escapes `\n`, `\t`, `\r`, `\0`, `\\`, and `\"`.
 - `for name in iterable` (arrays, strings, map keys). The parser desugars it to a
   C-style `for` over a hidden cursor `[__iter(iterable), 0]`, so every backend
   gets it for free. `range()` builds the integer array for counting loops.
+- `try { } catch (e) { }` and `throw`. The interpreter reuses its `bool` error
+  return; the VM gets a handler stack with `PushHandler`/`PopHandler`/`Throw`
+  and unwinds the value and frame stacks to the handler on a fault. The caught
+  value is always a string. `break`/`continue`/`return` emit the matching
+  `PopHandler`s so they leave a `try` cleanly.
 - The bytecode VM now covers the whole language and calls every built-in
   through a `CallNative` instruction; `&&` and `||` short-circuit.
 - Optional `: type` / `-> type` annotations; only `kite native` enforces them.

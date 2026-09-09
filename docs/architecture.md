@@ -28,9 +28,9 @@ frame, recursion works, and arrays and maps are reference values.
 
 The **bytecode compiler and VM** (`src/bytecode/`) lower the AST into a `Chunk`
 -- a constant pool plus a flat instruction stream -- and run it on a stack
-machine with call frames. The VM covers the whole dynamic language. Where the
-two overlap the interpreter is the reference: the VM is expected to produce
-identical output.
+machine with call frames and an exception-handler stack for `try`. The VM covers
+the whole dynamic language. Where the two overlap the interpreter is the
+reference: the VM is expected to produce identical output.
 
 The **native compiler** (`src/native/`) type-checks a typed subset (annotated
 `fn` signatures, `int`/`float`/`bool`/`string`, no collections yet), emits C,
@@ -44,5 +44,5 @@ back with `kite exec`. `load_bytecode` runs `validate_chunk` first, which
 confirms every constant-pool index and jump target is in range, so a truncated
 or tampered file is rejected instead of crashing the VM.
 
-Planned but not built: a module/import system, user-defined types, error
-handling, and widening the native compiler to strings and collections.
+Planned but not built: a module/import system, user-defined types, and widening
+the native compiler to strings and collections.

@@ -13,6 +13,7 @@ Chunk BytecodeCompiler::compile(const Program& program) {
     chunk_ = {};
     function_indices_.clear();
     loops_.clear();
+    handler_depth_ = 0;
     errors_.clear();
 
     for (const auto& statement : program.statements) {
@@ -32,6 +33,7 @@ Chunk BytecodeCompiler::compile(const Program& program) {
         if (statement->kind != NodeKind::Function) continue;
         const auto& function = static_cast<const FunctionStatement&>(*statement);
         chunk_.functions[function_indices_[function.name]].address = chunk_.code.size();
+        handler_depth_ = 0;
         for (const auto& child : function.body) compile_statement(*child);
         emit(OpCode::Constant, add_constant(Value::string("")));
         emit(OpCode::Return);
@@ -130,7 +132,7 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
     case NodeKind::While: {
         const auto& loop = static_cast<const WhileStatement&>(statement);
         const std::size_t start = chunk_.code.size();
-        loops_.push_back({});
+        loops_.push_back({{}, {}, handler_depth_});
         compile_expression(*loop.condition);
         const std::size_t end_jump = emit_jump(OpCode::JumpIfFalse);
         for (const auto& child : loop.body) compile_statement(*child);
@@ -145,7 +147,7 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         const auto& loop = static_cast<const ForStatement&>(statement);
         if (loop.initializer != nullptr) compile_statement(*loop.initializer);
         const std::size_t start = chunk_.code.size();
-        loops_.push_back({});
+        loops_.push_back({{}, {}, handler_depth_});
         std::size_t end_jump = 0;
         const bool has_condition = loop.condition != nullptr;
         if (has_condition) {
@@ -167,24 +169,28 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
     case NodeKind::Return: {
         const auto& return_statement = static_cast<const ReturnStatement&>(statement);
         const Expression& value = *return_statement.value;
-        if (value.kind == NodeKind::Identifier &&
-            static_cast<const IdentifierExpression&>(value).slot >= 0) {
+        const bool return_local = value.kind == NodeKind::Identifier &&
+            static_cast<const IdentifierExpression&>(value).slot >= 0;
+        const bool return_const = value.kind == NodeKind::Integer;
+        if (!return_local && !return_const) compile_expression(value);
+        for (int depth = 0; depth < handler_depth_; ++depth) emit(OpCode::PopHandler);
+        if (return_local) {
             emit(OpCode::ReturnLocal,
                 static_cast<std::size_t>(static_cast<const IdentifierExpression&>(value).slot));
-            return;
-        }
-        if (value.kind == NodeKind::Integer) {
+        } else if (return_const) {
             emit(OpCode::ReturnConst, add_constant(static_cast<const IntegerExpression&>(value).value));
-            return;
+        } else {
+            emit(OpCode::Return);
         }
-        compile_expression(value);
-        emit(OpCode::Return);
         return;
     }
     case NodeKind::Break: {
         if (loops_.empty()) {
             report_error("break outside loop");
             return;
+        }
+        for (int depth = loops_.back().handler_depth; depth < handler_depth_; ++depth) {
+            emit(OpCode::PopHandler);
         }
         loops_.back().break_jumps.push_back(emit_jump(OpCode::Jump));
         return;
@@ -194,7 +200,33 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
             report_error("continue outside loop");
             return;
         }
+        for (int depth = loops_.back().handler_depth; depth < handler_depth_; ++depth) {
+            emit(OpCode::PopHandler);
+        }
         loops_.back().continue_jumps.push_back(emit_jump(OpCode::Jump));
+        return;
+    }
+    case NodeKind::Try: {
+        const auto& node = static_cast<const TryStatement&>(statement);
+        const std::size_t handler_jump = emit_jump(OpCode::PushHandler);
+        ++handler_depth_;
+        for (const auto& child : node.try_branch) compile_statement(*child);
+        --handler_depth_;
+        emit(OpCode::PopHandler);
+        const std::size_t end_jump = emit_jump(OpCode::Jump);
+        patch_jump(handler_jump, chunk_.code.size());
+        if (node.slot >= 0) {
+            emit(OpCode::StoreLocal, static_cast<std::size_t>(node.slot));
+        } else {
+            emit(OpCode::Store, add_constant(Value::string(node.name)));
+        }
+        for (const auto& child : node.catch_branch) compile_statement(*child);
+        patch_jump(end_jump, chunk_.code.size());
+        return;
+    }
+    case NodeKind::Throw: {
+        compile_expression(*static_cast<const ThrowStatement&>(statement).value);
+        emit(OpCode::Throw);
         return;
     }
     case NodeKind::Function:
@@ -322,6 +354,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
     stack_.clear();
     stack_.reserve(8192);
     frames_.clear();
+    handlers_.clear();
     base_ = 0;
     variables_.clear();
     errors_.clear();
@@ -337,7 +370,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
             break;
         }
         case OpCode::StoreLocal:
-            if (stack_.empty()) { report_error("stack underflow on store"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on store"); goto fault; }
             stack_[base_ + instruction.operand] = std::move(stack_.back());
             stack_.pop_back();
             break;
@@ -347,17 +380,17 @@ bool BytecodeVm::run(const Chunk& chunk) {
             const std::int64_t delta = instruction.opcode == OpCode::IncLocal ? 1 : -1;
             if (slot.is_int()) slot = slot.as_int() + delta;
             else if (slot.is_float()) slot = slot.as_float() + static_cast<double>(delta);
-            else { report_error("operation requires numeric values"); return false; }
+            else { report_error("operation requires numeric values"); goto fault; }
             break;
         }
         case OpCode::Call: {
             if (instruction.operand >= chunk.functions.size()) {
                 report_error("invalid call target");
-                return false;
+                goto fault;
             }
-            if (frames_.size() >= 100000) { report_error("maximum call depth exceeded"); return false; }
+            if (frames_.size() >= 100000) { report_error("maximum call depth exceeded"); goto fault; }
             const FunctionInfo& function = chunk.functions[instruction.operand];
-            if (stack_.size() < function.arity) { report_error("stack underflow on call"); return false; }
+            if (stack_.size() < function.arity) { report_error("stack underflow on call"); goto fault; }
             const std::size_t new_base = stack_.size() - function.arity;
             stack_.resize(new_base + function.frame_size);
             frames_.push_back({instruction_pointer, base_});
@@ -367,7 +400,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
         }
         case OpCode::CallNative: {
             const std::size_t count = instruction.operand;
-            if (stack_.size() < count + 1) { report_error("stack underflow on builtin call"); return false; }
+            if (stack_.size() < count + 1) { report_error("stack underflow on builtin call"); goto fault; }
             std::vector<Value> arguments;
             arguments.reserve(count);
             const std::size_t first = stack_.size() - count;
@@ -380,13 +413,13 @@ bool BytecodeVm::run(const Chunk& chunk) {
             const BuiltinFn builtin = find_builtin(name.as_string());
             if (builtin == nullptr) {
                 report_error("unknown function: " + name.as_string());
-                return false;
+                goto fault;
             }
             BuiltinContext context{output_, {}};
             Value result;
             if (!builtin(context, arguments, result)) {
                 report_error(context.error);
-                return false;
+                goto fault;
             }
             stack_.push_back(std::move(result));
             break;
@@ -394,14 +427,14 @@ bool BytecodeVm::run(const Chunk& chunk) {
         case OpCode::Return:
         case OpCode::ReturnLocal:
         case OpCode::ReturnConst: {
-            if (frames_.empty()) { report_error("return outside function"); return false; }
+            if (frames_.empty()) { report_error("return outside function"); goto fault; }
             Value result;
             if (instruction.opcode == OpCode::ReturnLocal) {
                 result = stack_[base_ + instruction.operand];
             } else if (instruction.opcode == OpCode::ReturnConst) {
                 result = chunk.constants[instruction.operand];
             } else {
-                if (stack_.empty()) { report_error("stack underflow on return"); return false; }
+                if (stack_.empty()) { report_error("stack underflow on return"); goto fault; }
                 result = std::move(stack_.back());
             }
             stack_.resize(base_);
@@ -411,24 +444,37 @@ bool BytecodeVm::run(const Chunk& chunk) {
             frames_.pop_back();
             break;
         }
+        case OpCode::PushHandler:
+            handlers_.push_back({instruction.operand, stack_.size(), frames_.size()});
+            break;
+        case OpCode::PopHandler:
+            if (!handlers_.empty()) handlers_.pop_back();
+            break;
+        case OpCode::Throw: {
+            if (stack_.empty()) { report_error("stack underflow on throw"); goto fault; }
+            Value value = std::move(stack_.back());
+            stack_.pop_back();
+            report_error(value.is_string() ? value.as_string() : to_string(value));
+            goto fault;
+        }
         case OpCode::Load: {
             const auto& name = chunk.constants[instruction.operand].as_string();
             const auto variable = variables_.find(name);
             if (variable == variables_.end()) {
                 report_error("unknown variable: " + name);
-                return false;
+                goto fault;
             }
             stack_.push_back(variable->second);
             break;
         }
         case OpCode::Store: {
-            if (stack_.empty()) { report_error("stack underflow on store"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on store"); goto fault; }
             variables_[chunk.constants[instruction.operand].as_string()] = stack_.back();
             stack_.pop_back();
             break;
         }
         case OpCode::Print:
-            if (stack_.size() < instruction.operand) { report_error("stack underflow on print"); return false; }
+            if (stack_.size() < instruction.operand) { report_error("stack underflow on print"); goto fault; }
             {
                 const std::size_t first = stack_.size() - instruction.operand;
                 for (std::size_t index = 0; index < instruction.operand; ++index) {
@@ -440,32 +486,32 @@ bool BytecodeVm::run(const Chunk& chunk) {
             }
             break;
         case OpCode::Pop:
-            if (stack_.empty()) { report_error("stack underflow on pop"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on pop"); goto fault; }
             stack_.pop_back();
             break;
         case OpCode::Dup:
-            if (stack_.empty()) { report_error("stack underflow on dup"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on dup"); goto fault; }
             stack_.push_back(stack_[stack_.size() - 1]);
             break;
         case OpCode::Jump:
             instruction_pointer = instruction.operand - 1;
             break;
         case OpCode::JumpIfFalse: {
-            if (stack_.empty()) { report_error("stack underflow on conditional jump"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on conditional jump"); goto fault; }
             const bool take_jump = !stack_.back().is_truthy();
             stack_.pop_back();
             if (take_jump) instruction_pointer = instruction.operand - 1;
             break;
         }
         case OpCode::JumpIfTrue: {
-            if (stack_.empty()) { report_error("stack underflow on conditional jump"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on conditional jump"); goto fault; }
             const bool take_jump = stack_.back().is_truthy();
             stack_.pop_back();
             if (take_jump) instruction_pointer = instruction.operand - 1;
             break;
         }
         case OpCode::MakeArray: {
-            if (stack_.size() < instruction.operand) { report_error("stack underflow on array construction"); return false; }
+            if (stack_.size() < instruction.operand) { report_error("stack underflow on array construction"); goto fault; }
             Value array = Value::array();
             auto& elements = array.as_array();
             const std::size_t first = stack_.size() - instruction.operand;
@@ -477,20 +523,20 @@ bool BytecodeVm::run(const Chunk& chunk) {
             break;
         }
         case OpCode::MakeMap: {
-            if (stack_.size() < instruction.operand * 2) { report_error("stack underflow on map construction"); return false; }
+            if (stack_.size() < instruction.operand * 2) { report_error("stack underflow on map construction"); goto fault; }
             Value map = Value::map();
             auto& entries = map.as_map();
             for (std::size_t index = 0; index < instruction.operand; ++index) {
                 Value value = std::move(stack_.back()); stack_.pop_back();
                 Value key = std::move(stack_.back()); stack_.pop_back();
-                if (!key.is_string()) { report_error("map keys must be strings"); return false; }
+                if (!key.is_string()) { report_error("map keys must be strings"); goto fault; }
                 entries[key.as_string()] = std::move(value);
             }
             stack_.push_back(std::move(map));
             break;
         }
         case OpCode::Index: {
-            if (stack_.size() < 2) { report_error("stack underflow on index"); return false; }
+            if (stack_.size() < 2) { report_error("stack underflow on index"); goto fault; }
             Value index = std::move(stack_.back()); stack_.pop_back();
             Value target = std::move(stack_.back()); stack_.pop_back();
             if (target.is_array()) {
@@ -498,7 +544,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
                 if (!index.is_int() || index.as_int() < 0 ||
                     static_cast<std::size_t>(index.as_int()) >= elements.size()) {
                     report_error("array index out of bounds");
-                    return false;
+                    goto fault;
                 }
                 stack_.push_back(elements[static_cast<std::size_t>(index.as_int())]);
             } else if (target.is_string()) {
@@ -506,59 +552,59 @@ bool BytecodeVm::run(const Chunk& chunk) {
                 if (!index.is_int() || index.as_int() < 0 ||
                     static_cast<std::size_t>(index.as_int()) >= text.size()) {
                     report_error("string index out of bounds");
-                    return false;
+                    goto fault;
                 }
                 stack_.push_back(Value::string(std::string(1, text[static_cast<std::size_t>(index.as_int())])));
             } else if (target.is_map()) {
                 const auto& entries = target.as_map();
                 if (!index.is_string() || !entries.contains(index.as_string())) {
                     report_error("map key not found");
-                    return false;
+                    goto fault;
                 }
                 stack_.push_back(entries.at(index.as_string()));
             } else {
                 report_error("index target must be an array or map");
-                return false;
+                goto fault;
             }
             break;
         }
         case OpCode::SetIndex: {
-            if (stack_.size() < 3) { report_error("stack underflow on index assignment"); return false; }
+            if (stack_.size() < 3) { report_error("stack underflow on index assignment"); goto fault; }
             Value value = std::move(stack_.back()); stack_.pop_back();
             Value index = std::move(stack_.back()); stack_.pop_back();
             Value target = std::move(stack_.back()); stack_.pop_back();
             if (target.is_array()) {
-                if (!index.is_int()) { report_error("array index must be an integer"); return false; }
+                if (!index.is_int()) { report_error("array index must be an integer"); goto fault; }
                 auto& elements = target.as_array();
                 const std::int64_t position = index.as_int();
                 if (position < 0 || static_cast<std::size_t>(position) >= elements.size()) {
                     report_error("array index out of bounds");
-                    return false;
+                    goto fault;
                 }
                 elements[static_cast<std::size_t>(position)] = std::move(value);
             } else if (target.is_map()) {
-                if (!index.is_string()) { report_error("map key must be a string"); return false; }
+                if (!index.is_string()) { report_error("map key must be a string"); goto fault; }
                 target.as_map()[index.as_string()] = std::move(value);
             } else {
                 report_error("cannot assign to an index of this value");
-                return false;
+                goto fault;
             }
             break;
         }
         case OpCode::Negate:
         case OpCode::Not: {
-            if (stack_.empty()) { report_error("stack underflow on unary operation"); return false; }
+            if (stack_.empty()) { report_error("stack underflow on unary operation"); goto fault; }
             Value value = std::move(stack_.back());
             stack_.pop_back();
             if (instruction.opcode == OpCode::Not) {
-                if (!value.is_bool()) { report_error("unary '!' requires a boolean value"); return false; }
+                if (!value.is_bool()) { report_error("unary '!' requires a boolean value"); goto fault; }
                 stack_.push_back(!value.as_bool());
             } else if (value.is_int()) {
                 stack_.push_back(-value.as_int());
             } else if (value.is_float()) {
                 stack_.push_back(-value.as_float());
             } else {
-                report_error("unary '-' requires a numeric value"); return false;
+                report_error("unary '-' requires a numeric value"); goto fault;
             }
             break;
         }
@@ -575,11 +621,30 @@ bool BytecodeVm::run(const Chunk& chunk) {
         case OpCode::GreaterEqual:
         case OpCode::And:
         case OpCode::Or:
-            if (!binary_operation(instruction.opcode)) return false;
+            if (!binary_operation(instruction.opcode)) goto fault;
             break;
         case OpCode::Halt:
             return true;
         }
+        continue;
+
+    fault:
+        if (handlers_.empty()) {
+            return false;
+        }
+        const Handler handler = handlers_.back();
+        handlers_.pop_back();
+        while (frames_.size() > handler.frame_depth) {
+            base_ = frames_.back().base;
+            frames_.pop_back();
+        }
+        if (stack_.size() > handler.stack_depth) {
+            stack_.resize(handler.stack_depth);
+        }
+        std::string message = errors_.empty() ? std::string("error") : std::move(errors_.back());
+        errors_.clear();
+        stack_.push_back(Value::string(std::move(message)));
+        instruction_pointer = handler.target - 1;
     }
     return true;
 }
@@ -728,7 +793,8 @@ bool operand_is_constant_index(OpCode opcode) {
 }
 
 bool operand_is_jump_target(OpCode opcode) {
-    return opcode == OpCode::Jump || opcode == OpCode::JumpIfFalse || opcode == OpCode::JumpIfTrue;
+    return opcode == OpCode::Jump || opcode == OpCode::JumpIfFalse ||
+        opcode == OpCode::JumpIfTrue || opcode == OpCode::PushHandler;
 }
 
 bool operand_is_count(OpCode opcode) {

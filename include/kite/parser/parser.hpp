@@ -27,6 +27,8 @@ private:
     std::unique_ptr<Statement> parse_for_statement();
     std::unique_ptr<Statement> parse_function_statement();
     std::unique_ptr<Statement> parse_return_statement();
+    std::unique_ptr<Statement> parse_try_statement();
+    std::unique_ptr<Statement> parse_throw_statement();
     std::unique_ptr<Statement> parse_expression_statement();
     std::unique_ptr<Expression> parse_expression();
     std::unique_ptr<Expression> parse_logical_or();

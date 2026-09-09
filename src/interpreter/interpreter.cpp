@@ -208,6 +208,34 @@ bool Interpreter::execute_statement(const Statement& statement) {
         loop_flow_ = LoopFlow::Continue;
         return true;
 
+    case NodeKind::Throw: {
+        const auto& node = static_cast<const ThrowStatement&>(statement);
+        Value value;
+        if (!evaluate(*node.value, value)) {
+            return false;
+        }
+        report_error(value.is_string() ? value.as_string() : to_string(value));
+        return false;
+    }
+
+    case NodeKind::Try: {
+        const auto& node = static_cast<const TryStatement&>(statement);
+        const std::size_t saved_stack = stack_.size();
+        const std::size_t saved_errors = errors_.size();
+        if (execute_block(node.try_branch)) {
+            return true;
+        }
+        std::string message = errors_.size() > saved_errors ? errors_.back() : "error";
+        errors_.resize(saved_errors);
+        stack_.resize(saved_stack);
+        if (node.slot >= 0) {
+            local(node.slot) = Value::string(std::move(message));
+        } else {
+            globals_[node.name] = Value::string(std::move(message));
+        }
+        return execute_block(node.catch_branch);
+    }
+
     case NodeKind::Return: {
         const auto& return_statement = static_cast<const ReturnStatement&>(statement);
         if (return_statement.value == nullptr) {

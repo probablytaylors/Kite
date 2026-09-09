@@ -149,6 +149,20 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         if (loop_depth_ == 0) report_error("continue outside loop");
         return;
     }
+    if (const auto* try_statement = dynamic_cast<const TryStatement*>(&statement)) {
+        scopes_.emplace_back();
+        analyze_block(try_statement->try_branch);
+        scopes_.pop_back();
+        scopes_.emplace_back();
+        scopes_.back()[try_statement->name] = SemanticType::String;
+        analyze_block(try_statement->catch_branch);
+        scopes_.pop_back();
+        return;
+    }
+    if (const auto* throw_statement = dynamic_cast<const ThrowStatement*>(&statement)) {
+        analyze_expression(*throw_statement->value);
+        return;
+    }
     if (const auto* function = dynamic_cast<const FunctionStatement*>(&statement)) {
         const bool previous = in_function_;
         const int previous_loop_depth = loop_depth_;

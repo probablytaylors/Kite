@@ -129,6 +129,16 @@ void resolve_statement(Statement& statement, Scope& scope) {
         if (return_statement.value != nullptr) resolve_expression(*return_statement.value, scope);
         return;
     }
+    case NodeKind::Try: {
+        auto& node = static_cast<TryStatement&>(statement);
+        resolve_block(node.try_branch, scope);
+        node.slot = scope.declare(node.name);
+        resolve_block(node.catch_branch, scope);
+        return;
+    }
+    case NodeKind::Throw:
+        resolve_expression(*static_cast<ThrowStatement&>(statement).value, scope);
+        return;
     case NodeKind::Function:
         resolve_function(static_cast<FunctionStatement&>(statement));
         return;

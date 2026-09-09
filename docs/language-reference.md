@@ -155,6 +155,25 @@ Before execution, semantic analysis checks identifiers, assignment targets,
 condition types, collection index types, `return`/`break`/`continue` placement,
 and concrete arithmetic operands.
 
+## Errors
+
+Any runtime error -- a failing built-in, an out-of-range index, division by
+zero -- can be caught:
+
+```kite
+try {
+    let text = read_file("config.txt")
+    print(text)
+} catch (err) {
+    print("could not read config: " + err)
+}
+```
+
+The caught value is always a string. `throw value` raises one deliberately;
+a non-string value is converted with `str`. An uncaught error stops the program
+and prints the message, as before. `break`, `continue`, and `return` still pass
+through a `try` block to their target.
+
 ## Functions
 
 ```kite
