@@ -11,10 +11,17 @@ cmake --build build --config Debug
 .\build\Debug\kite.exe examples\hello.kite
 ```
 
-The initial bytecode VM can be selected with:
+The bytecode VM can be selected with:
 
 ```powershell
-.\build\Debug\kite.exe --bytecode examples\calculator.kite
+.\build\Debug\kite.exe run --bytecode examples\calculator.kite
+```
+
+A source file can also be compiled to a bytecode artifact and run separately:
+
+```powershell
+.\build\Debug\kite.exe build examples\calculator.kite -o calculator.kbc
+.\build\Debug\kite.exe exec calculator.kbc
 ```
 
 ## Values
@@ -190,3 +197,8 @@ arithmetic, comparisons, boolean logic, unary operators, string concatenation,
 `print`, `if`/`else`, `while`, arrays, maps, and indexing. User-defined
 functions and math/file built-ins still run through the tree-walking
 interpreter until bytecode call frames and native-call instructions are added.
+
+`kite build` produces a `.kbc` artifact holding the constant pool and
+instruction stream; `kite exec` loads and runs one after validating that every
+operand is in range. When a program uses only the supported subset, the
+bytecode VM produces output identical to the interpreter.

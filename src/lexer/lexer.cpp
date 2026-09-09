@@ -66,8 +66,6 @@ Token Lexer::scan_identifier_or_keyword() {
         type = TokenType::Fn;
     } else if (lexeme == "return") {
         type = TokenType::Return;
-    } else if (lexeme == "while") {
-        type = TokenType::While;
     } else if (lexeme == "true") {
         type = TokenType::True;
     } else if (lexeme == "false") {

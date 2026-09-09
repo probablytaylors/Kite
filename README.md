@@ -14,15 +14,12 @@ control flow, functions, file I/O, and standard-library helpers.
 ```text
 .
 ├── .github/workflows/       Continuous integration configuration
-├── .vscode/                 VS Code workspace settings
 ├── docs/                    Architecture and language notes
-├── examples/                Small future Kite programs
+├── examples/                Sample Kite programs
 ├── include/kite/            Public C++ headers
-├── src/interpreter/         Interpreter implementation
-├── src/lexer/               Lexer and token implementation
-├── src/parser/              Parser implementation
-├── std/                     Future standard library
-├── tests/                   C++ tests and component test areas
+├── installer/               Windows installer script
+├── src/                     Lexer, parser, semantic analyzer, interpreter, bytecode VM
+├── std/                     Source-level standard library modules
 ├── tools/                   Future developer tools
 ├── CMakeLists.txt
 ├── CHANGELOG.md
@@ -48,33 +45,47 @@ The executable is written to `build/Debug/kite.exe`.
 
 The command reads, parses, and executes a Kite source file.
 
-The initial bytecode compiler and stack VM can be selected with:
+### Bytecode VM
+
+The bytecode compiler and stack VM can be selected with:
 
 ```powershell
-.\build\Debug\kite.exe --bytecode examples\calculator.kite
+.\build\Debug\kite.exe run --bytecode examples\calculator.kite
 ```
 
-## Tests
+### Compiled artifacts
 
-Build the project first, then run:
+`kite build` compiles a source file to a `.kbc` bytecode artifact, and
+`kite exec` runs one without touching the front end:
 
 ```powershell
-ctest --test-dir build -C Debug --output-on-failure
+.\build\Debug\kite.exe build examples\calculator.kite -o calculator.kbc
+.\build\Debug\kite.exe exec calculator.kbc
 ```
 
-CTest runs lexer, parser, interpreter, bytecode, and standard-library tests.
+The artifact format is versioned. `kite exec` validates every operand against
+the constant pool and code bounds before running, so a truncated or corrupt
+artifact is rejected rather than executed. `--bytecode` remains an alias for
+`run --bytecode`.
+
+Configure with `-D KITE_WERROR=ON` to treat compiler warnings as errors.
+
+## Installer
+
+`installer/kite.iss` builds a Windows installer with [Inno Setup](https://jrsoftware.org/isinfo.php).
+It installs `kite.exe`, adds it to `PATH`, and registers the `.kite` extension.
+
+```powershell
+cmake --build build --config Release
+iscc installer\kite.iss
+```
+
+The installer is written to `installer\output\kite-setup.exe`.
 
 ## CMake Targets
 
-- `kite_core`: static library containing the lexer, parser, AST, semantic analyzer, interpreter, and bytecode VM.
-- `kite`: command-line Kite interpreter.
-- `kite --bytecode`: bytecode compiler and stack VM mode.
-- `kite_lexer_tests`: lexer behavior tests.
-- `kite_parser_tests`: parser and AST behavior tests.
-- `kite_interpreter_tests`: interpreter behavior tests.
-- `kite_bytecode_tests`: bytecode compiler and VM tests.
-- `kite_stdlib_tests`: source-level standard-library tests.
-- `kite_semantic_tests`: semantic-analysis tests.
+- `kite_core`: static library with the lexer, parser, AST, semantic analyzer, interpreter, and bytecode VM.
+- `kite`: command-line Kite tool (`run`, `build`, `exec`).
 
 ## Development Roadmap
 
@@ -97,11 +108,14 @@ CTest runs lexer, parser, interpreter, bytecode, and standard-library tests.
 - [x] Initial standard math functions
 - [x] Expanded math functions
 - [x] Initial source-level standard library modules
+- [x] Bytecode control flow and collection literals/indexing
+- [x] Bytecode artifacts: `kite build` / `kite exec` with a validated on-disk format
 - [ ] Richer static inference and user-defined types
 - [ ] Maps mutation and collection methods
 - [ ] Modules and imports
-- [x] Bytecode control flow and collection literals/indexing
 - [ ] Bytecode function call frames and returns
+- [ ] Standalone executables (bundle a `.kbc` artifact with the runtime)
+- [ ] Windows installer
 - [ ] Tooling such as a REPL, formatter, debugger, and package manager
 
 See [docs/architecture.md](docs/architecture.md),

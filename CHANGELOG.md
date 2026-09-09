@@ -26,3 +26,8 @@
 - Added CTest coverage for the standard-library modules.
 - Added semantic analysis, runtime type inspection, mutable array operations, and expanded math functions.
 - Added bytecode jumps, conditional/loop execution, array/map construction, and indexing.
+- Added a versioned bytecode artifact format with `save_bytecode`/`load_bytecode` and `validate_chunk` operand checking.
+- Added the `kite run`, `kite build`, and `kite exec` subcommands (`--bytecode` kept as an alias).
+- Added the `KITE_WERROR` build option.
+- Fixed a bytecode compiler bug where an `if` without an `else` left the condition value unbalanced on the stack.
+- Removed a duplicate `while` keyword branch in the lexer.

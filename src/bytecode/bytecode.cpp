@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <fstream>
 #include <limits>
 #include <ostream>
 #include <sstream>
@@ -86,16 +87,11 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         const std::size_t false_jump = emit_jump(OpCode::JumpIfFalse);
         emit(OpCode::Pop);
         for (const auto& child : conditional->then_branch) compile_statement(*child);
-        if (!conditional->else_branch.empty()) {
-            const std::size_t end_jump = emit_jump(OpCode::Jump);
-            patch_jump(false_jump, chunk_.code.size());
-            emit(OpCode::Pop);
-            for (const auto& child : conditional->else_branch) compile_statement(*child);
-            patch_jump(end_jump, chunk_.code.size());
-        } else {
-            patch_jump(false_jump, chunk_.code.size());
-            emit(OpCode::Pop);
-        }
+        const std::size_t end_jump = emit_jump(OpCode::Jump);
+        patch_jump(false_jump, chunk_.code.size());
+        emit(OpCode::Pop);
+        for (const auto& child : conditional->else_branch) compile_statement(*child);
+        patch_jump(end_jump, chunk_.code.size());
         return;
     }
     if (const auto* loop = dynamic_cast<const WhileStatement*>(&statement)) {
@@ -388,6 +384,178 @@ std::string bytecode_value_to_string(const BytecodeValue& value) {
         output << '}'; return output.str();
     }
     return std::get<std::string>(value);
+}
+
+namespace {
+
+constexpr std::uint64_t kMaxStringBytes = 1024ull * 1024ull * 64ull;
+constexpr std::uint64_t kMaxConstants = 1'000'000ull;
+constexpr std::uint64_t kMaxInstructions = 10'000'000ull;
+
+template <typename T>
+void write_binary(std::ostream& output, const T& value) { output.write(reinterpret_cast<const char*>(&value), sizeof(T)); }
+
+template <typename T>
+bool read_binary(std::istream& input, T& value) { return static_cast<bool>(input.read(reinterpret_cast<char*>(&value), sizeof(T))); }
+
+void write_string(std::ostream& output, const std::string& value) {
+    const std::uint64_t size = value.size();
+    write_binary(output, size);
+    output.write(value.data(), static_cast<std::streamsize>(size));
+}
+
+bool read_string(std::istream& input, std::string& value) {
+    std::uint64_t size = 0;
+    if (!read_binary(input, size) || size > kMaxStringBytes) return false;
+    value.resize(static_cast<std::size_t>(size));
+    return static_cast<bool>(input.read(value.data(), static_cast<std::streamsize>(size)));
+}
+
+bool write_value(std::ostream& output, const BytecodeValue& value) {
+    const std::uint8_t type = static_cast<std::uint8_t>(value.index());
+    write_binary(output, type);
+    if (const auto* boolean = std::get_if<bool>(&value)) write_binary(output, *boolean);
+    else if (const auto* integer = std::get_if<std::int64_t>(&value)) write_binary(output, *integer);
+    else if (const auto* floating_point = std::get_if<double>(&value)) write_binary(output, *floating_point);
+    else if (const auto* string = std::get_if<std::string>(&value)) write_string(output, *string);
+    else return false;
+    return static_cast<bool>(output);
+}
+
+bool read_value(std::istream& input, BytecodeValue& value) {
+    std::uint8_t type = 0;
+    if (!read_binary(input, type)) return false;
+    if (type == 0) { bool item = false; if (!read_binary(input, item)) return false; value = item; }
+    else if (type == 1) { std::int64_t item = 0; if (!read_binary(input, item)) return false; value = item; }
+    else if (type == 2) { double item = 0.0; if (!read_binary(input, item)) return false; value = item; }
+    else if (type == 3) { std::string item; if (!read_string(input, item)) return false; value = std::move(item); }
+    else return false;
+    return true;
+}
+
+bool operand_is_constant_index(OpCode opcode) {
+    return opcode == OpCode::Constant || opcode == OpCode::Load || opcode == OpCode::Store;
+}
+
+bool operand_is_jump_target(OpCode opcode) {
+    return opcode == OpCode::Jump || opcode == OpCode::JumpIfFalse;
+}
+
+bool operand_is_count(OpCode opcode) {
+    return opcode == OpCode::Print || opcode == OpCode::MakeArray || opcode == OpCode::MakeMap;
+}
+
+} // namespace
+
+bool validate_chunk(const Chunk& chunk, std::string& error) {
+    for (std::size_t index = 0; index < chunk.code.size(); ++index) {
+        const Instruction instruction = chunk.code[index];
+        if (static_cast<std::uint8_t>(instruction.opcode) > static_cast<std::uint8_t>(OpCode::Halt)) {
+            error = "unknown opcode at instruction " + std::to_string(index);
+            return false;
+        }
+        if (operand_is_constant_index(instruction.opcode)) {
+            if (instruction.operand >= chunk.constants.size()) {
+                error = "constant index out of range at instruction " + std::to_string(index);
+                return false;
+            }
+            if ((instruction.opcode == OpCode::Load || instruction.opcode == OpCode::Store) &&
+                !std::holds_alternative<std::string>(chunk.constants[instruction.operand])) {
+                error = "variable name constant is not a string at instruction " + std::to_string(index);
+                return false;
+            }
+        } else if (operand_is_jump_target(instruction.opcode)) {
+            if (instruction.operand > chunk.code.size()) {
+                error = "jump target out of range at instruction " + std::to_string(index);
+                return false;
+            }
+        } else if (!operand_is_count(instruction.opcode) && instruction.operand != 0) {
+            error = "unexpected non-zero operand at instruction " + std::to_string(index);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error) {
+    std::string validation_error;
+    if (!validate_chunk(chunk, validation_error)) {
+        error = "refusing to serialize invalid chunk: " + validation_error;
+        return false;
+    }
+    std::ofstream output(path, std::ios::binary);
+    if (!output) { error = "could not create bytecode file: " + path; return false; }
+    output.write(kBytecodeMagic, sizeof(kBytecodeMagic));
+    write_binary(output, kBytecodeFormatVersion);
+    const std::uint64_t constants = chunk.constants.size();
+    const std::uint64_t instructions = chunk.code.size();
+    write_binary(output, constants);
+    for (const auto& value : chunk.constants) {
+        if (!write_value(output, value)) {
+            error = "could not write bytecode constants (unsupported constant type)";
+            return false;
+        }
+    }
+    write_binary(output, instructions);
+    for (const auto& instruction : chunk.code) {
+        const std::uint8_t opcode = static_cast<std::uint8_t>(instruction.opcode);
+        const std::uint64_t operand = instruction.operand;
+        write_binary(output, opcode);
+        write_binary(output, operand);
+    }
+    if (!output) { error = "could not write bytecode file: " + path; return false; }
+    return true;
+}
+
+bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) { error = "could not open bytecode file: " + path; return false; }
+
+    char magic[sizeof(kBytecodeMagic)]{};
+    if (!input.read(magic, sizeof(magic)) ||
+        std::string(magic, sizeof(magic)) != std::string(kBytecodeMagic, sizeof(kBytecodeMagic))) {
+        error = "not a Kite bytecode file: " + path;
+        return false;
+    }
+    std::uint32_t version = 0;
+    if (!read_binary(input, version)) { error = "truncated bytecode header"; return false; }
+    if (version != kBytecodeFormatVersion) {
+        error = "unsupported bytecode format version " + std::to_string(version) + " (expected " +
+            std::to_string(kBytecodeFormatVersion) + ")";
+        return false;
+    }
+
+    std::uint64_t constants = 0;
+    if (!read_binary(input, constants) || constants > kMaxConstants) {
+        error = "invalid bytecode constant table";
+        return false;
+    }
+    chunk = {};
+    chunk.constants.resize(static_cast<std::size_t>(constants));
+    for (auto& value : chunk.constants) {
+        if (!read_value(input, value)) { error = "invalid bytecode constant"; return false; }
+    }
+
+    std::uint64_t instructions = 0;
+    if (!read_binary(input, instructions) || instructions > kMaxInstructions) {
+        error = "invalid bytecode instruction stream";
+        return false;
+    }
+    chunk.code.resize(static_cast<std::size_t>(instructions));
+    for (auto& instruction : chunk.code) {
+        std::uint8_t opcode = 0;
+        std::uint64_t operand = 0;
+        if (!read_binary(input, opcode) || !read_binary(input, operand)) {
+            error = "truncated bytecode instruction";
+            return false;
+        }
+        instruction = {static_cast<OpCode>(opcode), static_cast<std::size_t>(operand)};
+    }
+
+    input.peek();
+    if (!input.eof()) { error = "trailing data after bytecode instruction stream"; return false; }
+
+    return validate_chunk(chunk, error);
 }
 
 } // namespace kite

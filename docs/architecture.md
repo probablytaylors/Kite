@@ -26,3 +26,9 @@ constant pool and instruction stream. A stack VM executes those instructions;
 the tree-walking interpreter remains the complete runtime path for features
 not yet represented in bytecode. Control flow and collection construction are
 now represented; user-defined function frames remain on the compiler roadmap.
+
+A `Chunk` can be serialized to a versioned on-disk artifact (`kite build`) and
+loaded back (`kite exec`). Loading runs `validate_chunk`, which checks that
+every constant-pool index and jump target is in range, so a corrupt artifact
+is rejected before the VM sees it. The tree-walking interpreter is the
+reference semantics for any program the bytecode compiler also accepts.

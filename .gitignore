@@ -14,3 +14,6 @@
 *.pdb
 *.ilk
 *.exe
+
+# Compiled Kite bytecode artifacts
+*.kbc

@@ -172,11 +172,11 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
     if (const auto* array = dynamic_cast<const ArrayExpression*>(&expression)) {
         auto result = std::make_shared<ArrayValue>();
         for (const auto& element : array->elements) {
-            Value value;
-            if (!evaluate(*element, value)) {
+            Value element_value;
+            if (!evaluate(*element, element_value)) {
                 return false;
             }
-            result->elements.push_back(std::move(value));
+            result->elements.push_back(std::move(element_value));
         }
         value = std::move(result);
         return true;
@@ -186,8 +186,8 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
         auto result = std::make_shared<MapValue>();
         for (const auto& entry : map->entries) {
             Value key;
-            Value value;
-            if (!evaluate(*entry.first, key) || !evaluate(*entry.second, value)) {
+            Value entry_value;
+            if (!evaluate(*entry.first, key) || !evaluate(*entry.second, entry_value)) {
                 return false;
             }
             const auto* string_key = std::get_if<std::string>(&key);
@@ -195,7 +195,7 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
                 report_error("map keys must be strings");
                 return false;
             }
-            (*result).entries[*string_key] = std::move(value);
+            (*result).entries[*string_key] = std::move(entry_value);
         }
         value = std::move(result);
         return true;

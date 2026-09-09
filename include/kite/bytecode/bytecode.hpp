@@ -94,6 +94,13 @@ private:
     std::vector<std::string> errors_;
 };
 
+inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};
+inline constexpr std::uint32_t kBytecodeFormatVersion = 2;
+
+bool validate_chunk(const Chunk& chunk, std::string& error);
+bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error);
+bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error);
+
 std::string bytecode_value_to_string(const BytecodeValue& value);
 
 } // namespace kite

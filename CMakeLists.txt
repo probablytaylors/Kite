@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(Kite LANGUAGES CXX)
 
-include(CTest)
+option(KITE_WERROR "Treat compiler warnings as errors" OFF)
 
 add_library(kite_core STATIC
     src/bytecode/bytecode.cpp
@@ -14,55 +14,21 @@ add_library(kite_core STATIC
 )
 
 target_compile_features(kite_core PUBLIC cxx_std_20)
+target_include_directories(kite_core PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
-target_include_directories(kite_core
-    PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
-)
+if(MSVC)
+    target_compile_options(kite_core PUBLIC /W4 /permissive-)
+    if(KITE_WERROR)
+        target_compile_options(kite_core PUBLIC /WX)
+    endif()
+else()
+    target_compile_options(kite_core PUBLIC -Wall -Wextra -Wpedantic -Wshadow)
+    if(KITE_WERROR)
+        target_compile_options(kite_core PUBLIC -Werror)
+    endif()
+endif()
 
-add_executable(kite
-    src/main.cpp
-)
-
+add_executable(kite src/main.cpp)
 target_link_libraries(kite PRIVATE kite_core)
 
-if(BUILD_TESTING)
-    add_executable(kite_lexer_tests
-        tests/lexer/lexer_tests.cpp
-    )
-
-    add_executable(kite_parser_tests
-        tests/parser/parser_tests.cpp
-    )
-
-    add_executable(kite_interpreter_tests
-        tests/interpreter/interpreter_tests.cpp
-    )
-
-    add_executable(kite_bytecode_tests
-        tests/bytecode/bytecode_tests.cpp
-    )
-
-    add_executable(kite_stdlib_tests
-        tests/stdlib/stdlib_tests.cpp
-    )
-
-    add_executable(kite_semantic_tests
-        tests/semantic/semantic_tests.cpp
-    )
-
-    target_link_libraries(kite_lexer_tests PRIVATE kite_core)
-    target_link_libraries(kite_parser_tests PRIVATE kite_core)
-    target_link_libraries(kite_interpreter_tests PRIVATE kite_core)
-    target_link_libraries(kite_bytecode_tests PRIVATE kite_core)
-    target_link_libraries(kite_stdlib_tests PRIVATE kite_core)
-    target_compile_definitions(kite_stdlib_tests PRIVATE KITE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-    target_link_libraries(kite_semantic_tests PRIVATE kite_core)
-
-    add_test(NAME kite_lexer_tests COMMAND kite_lexer_tests)
-    add_test(NAME kite_parser_tests COMMAND kite_parser_tests)
-    add_test(NAME kite_interpreter_tests COMMAND kite_interpreter_tests)
-    add_test(NAME kite_bytecode_tests COMMAND kite_bytecode_tests)
-    add_test(NAME kite_stdlib_tests COMMAND kite_stdlib_tests)
-    add_test(NAME kite_semantic_tests COMMAND kite_semantic_tests)
-endif()
+install(TARGETS kite RUNTIME DESTINATION bin)
