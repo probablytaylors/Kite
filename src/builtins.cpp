@@ -356,6 +356,53 @@ bool bi_env(BuiltinContext& context, std::vector<Value>& arguments, Value& resul
     return true;
 }
 
+bool bi_iter(BuiltinContext& context, std::vector<Value>& arguments, Value& result) {
+    if (!arity(context, arguments, 1, "iter")) return false;
+    const Value& value = arguments[0];
+    result = Value::array();
+    auto& out = result.as_array();
+    if (value.is_array()) {
+        for (const auto& element : value.as_array()) out.push_back(element);
+    } else if (value.is_string()) {
+        for (char character : value.as_string()) out.push_back(Value::string(std::string(1, character)));
+    } else if (value.is_map()) {
+        for (const auto& entry : value.as_map()) out.push_back(Value::string(entry.first));
+        std::sort(out.begin(), out.end(),
+            [](const Value& a, const Value& b) { return a.as_string() < b.as_string(); });
+    } else {
+        context.error = std::string("cannot iterate over ") + type_name(value);
+        return false;
+    }
+    return true;
+}
+
+bool bi_range(BuiltinContext& context, std::vector<Value>& arguments, Value& result) {
+    if (arguments.empty() || arguments.size() > 3) {
+        context.error = "'range' expects 1 to 3 arguments";
+        return false;
+    }
+    for (const auto& argument : arguments) {
+        if (!argument.is_int()) { context.error = "'range' expects integers"; return false; }
+    }
+    std::int64_t start = 0;
+    std::int64_t stop = arguments[0].as_int();
+    std::int64_t step = 1;
+    if (arguments.size() > 1) {
+        start = arguments[0].as_int();
+        stop = arguments[1].as_int();
+    }
+    if (arguments.size() == 3) step = arguments[2].as_int();
+    if (step == 0) { context.error = "'range' step must not be zero"; return false; }
+    result = Value::array();
+    auto& out = result.as_array();
+    constexpr std::size_t limit = 100'000'000;
+    for (std::int64_t value = start; step > 0 ? value < stop : value > stop; value += step) {
+        if (out.size() >= limit) { context.error = "'range' produced too many values"; return false; }
+        out.push_back(value);
+    }
+    return true;
+}
+
 bool bi_pow(BuiltinContext& context, std::vector<Value>& arguments, Value& result) {
     if (!arity(context, arguments, 2, "pow")) return false;
     const double base = number_or_nan(arguments[0]);
@@ -405,6 +452,7 @@ BuiltinFn find_builtin(const std::string& name) {
         {"trim", bi_trim}, {"ord", bi_ord}, {"chr", bi_chr},
         {"read_file", bi_read_file}, {"write_file", bi_write_file},
         {"input", bi_input}, {"args", bi_args}, {"env", bi_env},
+        {"range", bi_range}, {"__iter", bi_iter},
         {"pow", bi_pow}, {"atan2", bi_atan2},
         {"min", [](BuiltinContext& c, std::vector<Value>& a, Value& r) { return bi_min_max(c, a, r, false, "min"); }},
         {"max", [](BuiltinContext& c, std::vector<Value>& a, Value& r) { return bi_min_max(c, a, r, true, "max"); }},

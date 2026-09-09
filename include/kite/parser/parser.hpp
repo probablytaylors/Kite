@@ -44,6 +44,8 @@ private:
 
     Lexer lexer_;
     Token current_;
+    Token peek_;
+    int synthetic_ = 0;
     std::vector<std::string> errors_;
 };
 

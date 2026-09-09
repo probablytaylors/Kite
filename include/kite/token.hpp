@@ -12,6 +12,7 @@ enum class TokenType {
     Else,
     While,
     For,
+    In,
     Fn,
     Return,
     Break,

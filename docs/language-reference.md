@@ -135,10 +135,16 @@ while (count < 3) {
 for (let i = 0; i < 3; i += 1) {
     print(i)
 }
+
+for (item in [10, 20, 30]) {
+    print(item)
+}
 ```
 
-The `for` clauses are a statement, an expression, and a statement; any of the
-three may be omitted.
+The C-style `for` clauses are a statement, an expression, and a statement; any of
+the three may be omitted. `for (name in iterable)` walks an array's elements, a
+string's characters, or a map's keys (sorted); `range(n)`, `range(start, stop)`,
+and `range(start, stop, step)` build integer arrays for counting loops.
 
 Conditions must evaluate to booleans.
 
@@ -180,6 +186,7 @@ Strings and collections:
 - `ord(s)`, `chr(code)`: character/codepoint conversion.
 - `append(array, value)`, `push(array, value)`, `pop(array)`.
 - `keys(map)`, `has(map, key)`, `remove(map, key)`.
+- `range(n)`, `range(start, stop)`, `range(start, stop, step)`: integer arrays.
 
 Environment and I/O:
 

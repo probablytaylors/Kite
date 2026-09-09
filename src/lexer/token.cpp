@@ -16,6 +16,8 @@ const char* token_type_name(TokenType type) {
         return "WHILE";
     case TokenType::For:
         return "FOR";
+    case TokenType::In:
+        return "IN";
     case TokenType::Fn:
         return "FN";
     case TokenType::Return:

@@ -70,6 +70,8 @@ Token Lexer::scan_identifier_or_keyword() {
         type = TokenType::While;
     } else if (lexeme == "for") {
         type = TokenType::For;
+    } else if (lexeme == "in") {
+        type = TokenType::In;
     } else if (lexeme == "fn") {
         type = TokenType::Fn;
     } else if (lexeme == "return") {

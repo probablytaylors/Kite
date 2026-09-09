@@ -147,6 +147,9 @@ String literals process the escapes `\n`, `\t`, `\r`, `\0`, `\\`, and `\"`.
   on assignment. `s[i]` reads a one-character string.
 - `break` and `continue` work in `while` and `for` on every execution path and
   are compile-time errors outside a loop. `continue` still runs the `for` step.
+- `for name in iterable` (arrays, strings, map keys). The parser desugars it to a
+  C-style `for` over a hidden cursor `[__iter(iterable), 0]`, so every backend
+  gets it for free. `range()` builds the integer array for counting loops.
 - The bytecode VM now covers the whole language and calls every built-in
   through a `CallNative` instruction; `&&` and `||` short-circuit.
 - Optional `: type` / `-> type` annotations; only `kite native` enforces them.

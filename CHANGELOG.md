@@ -7,6 +7,8 @@
 - `break` and `continue` in `while` and `for` loops, on all execution paths
   (interpreter, bytecode VM, native). Using either outside a loop is a
   compile-time error.
+- `for name in iterable` over arrays, strings, and maps (keys, sorted), plus
+  `range(n)` / `range(start, stop)` / `range(start, stop, step)`.
 - `#` line comments.
 - Integer division: `int / int` is now integer, matching C/Go/Rust; a float
   operand still gives a float.
@@ -30,7 +32,7 @@
   `CallNative` opcode, so builtins no longer force the VM back to the
   interpreter. New: `str`, `int`, `float`, `split`, `join`, `substring`,
   `contains`, `index_of`, `replace`, `trim`, `keys`, `has`, `remove`, `ord`,
-  `chr`, `push`, `input`, `args`, `env`.
+  `chr`, `push`, `input`, `args`, `env`, `range`.
 - The VM short-circuits `&&` / `||`.
 
 ### Fixed

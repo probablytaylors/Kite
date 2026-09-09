@@ -38,9 +38,29 @@ std::unique_ptr<Expression> make_binary(BinaryOperator op, std::unique_ptr<Expre
     return binary;
 }
 
+std::unique_ptr<Expression> make_index(std::unique_ptr<Expression> target,
+    std::unique_ptr<Expression> position) {
+    auto index = std::make_unique<IndexExpression>();
+    index->target = std::move(target);
+    index->index = std::move(position);
+    return index;
+}
+
+std::unique_ptr<Expression> make_index(std::unique_ptr<Expression> target, std::int64_t position) {
+    return make_index(std::move(target), std::make_unique<IntegerExpression>(position));
+}
+
+std::unique_ptr<Expression> make_call(std::string callee, std::unique_ptr<Expression> argument) {
+    auto call = std::make_unique<CallExpression>();
+    call->callee = std::make_unique<IdentifierExpression>(std::move(callee));
+    call->arguments.push_back(std::move(argument));
+    return call;
+}
+
 } // namespace
 
-Parser::Parser(Lexer lexer) : lexer_(std::move(lexer)), current_(lexer_.next_token()) {}
+Parser::Parser(Lexer lexer)
+    : lexer_(std::move(lexer)), current_(lexer_.next_token()), peek_(lexer_.next_token()) {}
 
 Program Parser::parse_program() {
     Program program;
@@ -67,7 +87,8 @@ const std::vector<std::string>& Parser::errors() const {
 }
 
 void Parser::advance() {
-    current_ = lexer_.next_token();
+    current_ = peek_;
+    peek_ = lexer_.next_token();
 }
 
 void Parser::report_error(const std::string& message) {
@@ -209,6 +230,50 @@ std::unique_ptr<Statement> Parser::parse_for_statement() {
     advance();
     if (!expect(TokenType::LeftParen, "expected '(' after 'for'")) {
         return nullptr;
+    }
+
+    if (current_.type == TokenType::Identifier && peek_.type == TokenType::In) {
+        const std::string variable = current_.lexeme;
+        const std::string cursor = " for" + std::to_string(synthetic_++);
+        advance();
+        advance();
+        auto iterable = parse_expression();
+        if (!iterable ||
+            !expect(TokenType::RightParen, "expected ')' after for-in iterable") ||
+            !expect(TokenType::LeftBrace, "expected '{' after for-in header")) {
+            return nullptr;
+        }
+
+        auto state = std::make_unique<ArrayExpression>();
+        state->elements.push_back(make_call("__iter", std::move(iterable)));
+        state->elements.push_back(std::make_unique<IntegerExpression>(0));
+
+        auto initializer = std::make_unique<LetStatement>();
+        initializer->name = cursor;
+        initializer->initializer = std::move(state);
+
+        auto step = std::make_unique<IndexAssignmentStatement>();
+        step->target = std::make_unique<IdentifierExpression>(cursor);
+        step->index = std::make_unique<IntegerExpression>(1);
+        step->value = make_binary(BinaryOperator::Add,
+            make_index(std::make_unique<IdentifierExpression>(cursor), 1),
+            std::make_unique<IntegerExpression>(1));
+
+        auto bind = std::make_unique<LetStatement>();
+        bind->name = variable;
+        bind->initializer = make_index(
+            make_index(std::make_unique<IdentifierExpression>(cursor), 0),
+            make_index(std::make_unique<IdentifierExpression>(cursor), 1));
+
+        auto statement = std::make_unique<ForStatement>();
+        statement->initializer = std::move(initializer);
+        statement->condition = make_binary(BinaryOperator::Less,
+            make_index(std::make_unique<IdentifierExpression>(cursor), 1),
+            make_call("len", make_index(std::make_unique<IdentifierExpression>(cursor), 0)));
+        statement->step = std::move(step);
+        statement->body.push_back(std::move(bind));
+        for (auto& child : parse_block()) statement->body.push_back(std::move(child));
+        return statement;
     }
 
     auto statement = std::make_unique<ForStatement>();

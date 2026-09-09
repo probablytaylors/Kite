@@ -54,15 +54,16 @@ if (total / len(scores) >= 80) {
 Numbers are 64-bit integers or doubles; `int / int` truncates to an integer, a
 float operand makes it a float, `%` is remainder. Strings take `+`, integer
 indexing, and the `\n \t \r \0 \\ \"` escapes. There are arrays and string-keyed
-maps (both assignable by index), `if`/`else if`/`else`, `while` and `for` with
-`break` / `continue`, recursion, short-circuiting `&&` / `||`, and `#` comments.
+maps (both assignable by index), `if`/`else if`/`else`, C-style `for`,
+`for x in collection`, `while`, `break` / `continue`, recursion,
+short-circuiting `&&` / `||`, and `#` comments.
 
-Built-ins: `print`, `len`, `type_of`, `str`/`int`/`float`, `upper`, `lower`,
-`trim`, `split`, `join`, `substring`, `replace`, `contains`, `index_of`,
-`append`, `push`, `pop`, `keys`, `has`, `remove`, `read_file`, `write_file`,
-`input`, `args`, `env`, and the usual math functions (`sqrt`, `pow`, trig,
-`floor`, `min`, `max`, and so on). The `std/` directory has a few more helpers
-written in Kite itself.
+Built-ins: `print`, `len`, `type_of`, `str`/`int`/`float`, `range`, `upper`,
+`lower`, `trim`, `split`, `join`, `substring`, `replace`, `contains`,
+`index_of`, `append`, `push`, `pop`, `keys`, `has`, `remove`, `read_file`,
+`write_file`, `input`, `args`, `env`, and the usual math functions (`sqrt`,
+`pow`, trig, `floor`, `min`, `max`, and so on). The `std/` directory has a few
+more helpers written in Kite itself.
 
 See [docs/language-reference.md](docs/language-reference.md) for the full
 picture, [docs/native.md](docs/native.md) for the native compiler, and
