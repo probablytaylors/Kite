@@ -125,6 +125,40 @@ bool Interpreter::execute_statement(const Statement& statement) {
             if (!execute_block(loop->body)) {
                 return false;
             }
+            if (return_pending_) {
+                return true;
+            }
+        }
+    }
+
+    if (const auto* loop = dynamic_cast<const ForStatement*>(&statement)) {
+        if (loop->initializer != nullptr && !execute_statement(*loop->initializer)) {
+            return false;
+        }
+        while (true) {
+            if (loop->condition != nullptr) {
+                Value condition;
+                if (!evaluate(*loop->condition, condition)) {
+                    return false;
+                }
+                const auto* boolean = std::get_if<bool>(&condition);
+                if (boolean == nullptr) {
+                    report_error("for condition must be boolean");
+                    return false;
+                }
+                if (!*boolean) {
+                    return true;
+                }
+            }
+            if (!execute_block(loop->body)) {
+                return false;
+            }
+            if (return_pending_) {
+                return true;
+            }
+            if (loop->step != nullptr && !execute_statement(*loop->step)) {
+                return false;
+            }
         }
     }
 
@@ -309,8 +343,11 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
             return true;
         }
 
-        if (binary->operator_type == BinaryOperator::Divide && right_number == 0.0) {
-            report_error("cannot divide by zero");
+        if ((binary->operator_type == BinaryOperator::Divide ||
+             binary->operator_type == BinaryOperator::Modulo) && right_number == 0.0) {
+            report_error(binary->operator_type == BinaryOperator::Modulo
+                ? "cannot take remainder by zero"
+                : "cannot divide by zero");
             return false;
         }
 
@@ -327,7 +364,10 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
             case BinaryOperator::Multiply:
                 value = left_integer * right_integer;
                 break;
-            case BinaryOperator::Divide:
+            case BinaryOperator::Modulo:
+                value = left_integer % right_integer;
+                break;
+            default:
                 break;
             }
             return true;
@@ -345,6 +385,11 @@ bool Interpreter::evaluate(const Expression& expression, Value& value) {
             break;
         case BinaryOperator::Divide:
             value = left_number / right_number;
+            break;
+        case BinaryOperator::Modulo:
+            value = std::fmod(left_number, right_number);
+            break;
+        default:
             break;
         }
         return true;

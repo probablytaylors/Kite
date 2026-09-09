@@ -68,6 +68,7 @@ enum class BinaryOperator {
     Subtract,
     Multiply,
     Divide,
+    Modulo,
     Equal,
     NotEqual,
     Less,
@@ -121,6 +122,13 @@ struct IfStatement final : Statement {
 
 struct WhileStatement final : Statement {
     std::unique_ptr<Expression> condition;
+    std::vector<std::unique_ptr<Statement>> body;
+};
+
+struct ForStatement final : Statement {
+    std::unique_ptr<Statement> initializer;
+    std::unique_ptr<Expression> condition;
+    std::unique_ptr<Statement> step;
     std::vector<std::unique_ptr<Statement>> body;
 };
 

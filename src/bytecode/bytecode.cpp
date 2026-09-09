@@ -105,6 +105,25 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         emit(OpCode::Pop);
         return;
     }
+    if (const auto* loop = dynamic_cast<const ForStatement*>(&statement)) {
+        if (loop->initializer != nullptr) compile_statement(*loop->initializer);
+        const std::size_t start = chunk_.code.size();
+        std::size_t end_jump = 0;
+        bool has_condition = loop->condition != nullptr;
+        if (has_condition) {
+            compile_expression(*loop->condition);
+            end_jump = emit_jump(OpCode::JumpIfFalse);
+            emit(OpCode::Pop);
+        }
+        for (const auto& child : loop->body) compile_statement(*child);
+        if (loop->step != nullptr) compile_statement(*loop->step);
+        emit(OpCode::Jump, start);
+        if (has_condition) {
+            patch_jump(end_jump, chunk_.code.size());
+            emit(OpCode::Pop);
+        }
+        return;
+    }
     report_error("bytecode compiler does not support this statement yet");
 }
 
@@ -161,6 +180,7 @@ void BytecodeCompiler::compile_expression(const Expression& expression) {
         case BinaryOperator::Subtract: emit(OpCode::Subtract); break;
         case BinaryOperator::Multiply: emit(OpCode::Multiply); break;
         case BinaryOperator::Divide: emit(OpCode::Divide); break;
+        case BinaryOperator::Modulo: emit(OpCode::Modulo); break;
         case BinaryOperator::Equal: emit(OpCode::Equal); break;
         case BinaryOperator::NotEqual: emit(OpCode::NotEqual); break;
         case BinaryOperator::Less: emit(OpCode::Less); break;
@@ -308,6 +328,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
         case OpCode::Subtract:
         case OpCode::Multiply:
         case OpCode::Divide:
+        case OpCode::Modulo:
         case OpCode::Equal:
         case OpCode::NotEqual:
         case OpCode::Less:
@@ -349,7 +370,10 @@ bool BytecodeVm::binary_operation(OpCode opcode) {
     }
     if (!is_numeric(left) || !is_numeric(right)) { report_error("operation requires numeric values"); return false; }
     const double left_number = as_number(left), right_number = as_number(right);
-    if (opcode == OpCode::Divide && right_number == 0.0) { report_error("cannot divide by zero"); return false; }
+    if ((opcode == OpCode::Divide || opcode == OpCode::Modulo) && right_number == 0.0) {
+        report_error(opcode == OpCode::Modulo ? "cannot take remainder by zero" : "cannot divide by zero");
+        return false;
+    }
     if (opcode == OpCode::Less || opcode == OpCode::LessEqual || opcode == OpCode::Greater || opcode == OpCode::GreaterEqual) {
         bool result = opcode == OpCode::Less ? left_number < right_number : opcode == OpCode::LessEqual ? left_number <= right_number : opcode == OpCode::Greater ? left_number > right_number : left_number >= right_number;
         stack_.push_back(result);
@@ -357,9 +381,11 @@ bool BytecodeVm::binary_operation(OpCode opcode) {
     }
     if (std::holds_alternative<std::int64_t>(left) && std::holds_alternative<std::int64_t>(right) && opcode != OpCode::Divide) {
         const auto a = std::get<std::int64_t>(left), b = std::get<std::int64_t>(right);
-        stack_.push_back(opcode == OpCode::Add ? a + b : opcode == OpCode::Subtract ? a - b : a * b);
+        stack_.push_back(opcode == OpCode::Add ? a + b : opcode == OpCode::Subtract ? a - b :
+            opcode == OpCode::Modulo ? a % b : a * b);
     } else {
-        stack_.push_back(opcode == OpCode::Add ? left_number + right_number : opcode == OpCode::Subtract ? left_number - right_number : opcode == OpCode::Multiply ? left_number * right_number : left_number / right_number);
+        stack_.push_back(opcode == OpCode::Add ? left_number + right_number : opcode == OpCode::Subtract ? left_number - right_number :
+            opcode == OpCode::Multiply ? left_number * right_number : opcode == OpCode::Modulo ? std::fmod(left_number, right_number) : left_number / right_number);
     }
     return true;
 }

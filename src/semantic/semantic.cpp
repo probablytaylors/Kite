@@ -85,6 +85,17 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         scopes_.emplace_back(); analyze_block(loop->body); scopes_.pop_back();
         return;
     }
+    if (const auto* loop = dynamic_cast<const ForStatement*>(&statement)) {
+        scopes_.emplace_back();
+        if (loop->initializer != nullptr) analyze_statement(*loop->initializer);
+        if (loop->condition != nullptr && analyze_expression(*loop->condition) != SemanticType::Boolean) {
+            report_error("for condition must be boolean");
+        }
+        if (loop->step != nullptr) analyze_statement(*loop->step);
+        analyze_block(loop->body);
+        scopes_.pop_back();
+        return;
+    }
     if (const auto* function = dynamic_cast<const FunctionStatement*>(&statement)) {
         const bool previous = in_function_;
         in_function_ = true;

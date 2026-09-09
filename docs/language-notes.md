@@ -10,12 +10,12 @@ The first source-level syntax supports:
 - The `let` keyword.
 - Decimal integer literals.
 - Decimal floating-point literals such as `3.14`.
-- Double-quoted string literals without escape processing yet.
-- The `=` operator.
+- Double-quoted string literals with `\n`, `\t`, `\r`, `\0`, `\\`, and `\"` escapes.
+- The `=` operator and the compound forms `+=`, `-=`, `*=`, `/=`, `%=`.
 - `(` and `)` punctuation.
-- `,` between call arguments.
-- `+`, `-`, `*`, and `/` arithmetic operators.
-- `if`, `else`, `true`, and `false` keywords.
+- `,` between call arguments and `;` between `for` clauses.
+- `+`, `-`, `*`, `/`, and `%` arithmetic operators.
+- `if`, `else`, `while`, `for`, `fn`, `return`, `true`, and `false` keywords.
 - `==`, `!=`, `<`, `<=`, `>`, and `>=` comparison operators.
 - `!`, `&&`, and `||` boolean operators.
 - `{` and `}` block delimiters.
@@ -128,3 +128,15 @@ The standard math functions currently available are `sqrt`, `pow`, `sin`,
 `cos`, `tan`, `log`, `abs`, `floor`, `ceil`, `exp`, `asin`, `acos`, `atan`,
 `atan2`, `min`, and `max`. They use the C++ standard library implementation
 and return numeric values.
+
+## Operators And Loops Milestone
+
+The `%` operator produces integer remainder for integer operands and `fmod`
+otherwise. Assignment has the compound forms `+=`, `-=`, `*=`, `/=`, and `%=`,
+which desugar to the plain binary operator plus assignment.
+
+`if` accepts `else if` without nesting braces. `for (init; condition; step) {}`
+is a C-style loop; each clause is optional. `return` inside a `while` or `for`
+body stops the loop and the enclosing function.
+
+String literals process the escapes `\n`, `\t`, `\r`, `\0`, `\\`, and `\"`.

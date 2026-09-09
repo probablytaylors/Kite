@@ -62,6 +62,8 @@ Token Lexer::scan_identifier_or_keyword() {
         type = TokenType::Else;
     } else if (lexeme == "while") {
         type = TokenType::While;
+    } else if (lexeme == "for") {
+        type = TokenType::For;
     } else if (lexeme == "fn") {
         type = TokenType::Fn;
     } else if (lexeme == "return") {
@@ -102,6 +104,9 @@ Token Lexer::scan_string() {
     advance();
 
     while (current() != '"' && current() != '\n' && current() != '\0') {
+        if (current() == '\\' && peek(1) != '\0' && peek(1) != '\n') {
+            advance();
+        }
         advance();
     }
 
@@ -163,13 +168,35 @@ Token Lexer::next_token() {
         }
         return make_token(TokenType::Invalid, start, line, column);
     case '+':
+        if (current() == '=') {
+            advance();
+            return make_token(TokenType::PlusEqual, start, line, column);
+        }
         return make_token(TokenType::Plus, start, line, column);
     case '-':
+        if (current() == '=') {
+            advance();
+            return make_token(TokenType::MinusEqual, start, line, column);
+        }
         return make_token(TokenType::Minus, start, line, column);
     case '*':
+        if (current() == '=') {
+            advance();
+            return make_token(TokenType::StarEqual, start, line, column);
+        }
         return make_token(TokenType::Star, start, line, column);
     case '/':
+        if (current() == '=') {
+            advance();
+            return make_token(TokenType::SlashEqual, start, line, column);
+        }
         return make_token(TokenType::Slash, start, line, column);
+    case '%':
+        if (current() == '=') {
+            advance();
+            return make_token(TokenType::PercentEqual, start, line, column);
+        }
+        return make_token(TokenType::Percent, start, line, column);
     case '<':
         if (current() == '=') {
             advance();
@@ -192,6 +219,8 @@ Token Lexer::next_token() {
         return make_token(TokenType::RightBracket, start, line, column);
     case ':':
         return make_token(TokenType::Colon, start, line, column);
+    case ';':
+        return make_token(TokenType::Semicolon, start, line, column);
     case '(':
         return make_token(TokenType::LeftParen, start, line, column);
     case ')':

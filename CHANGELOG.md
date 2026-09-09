@@ -29,5 +29,7 @@
 - Added a versioned bytecode artifact format with `save_bytecode`/`load_bytecode` and `validate_chunk` operand checking.
 - Added the `kite run`, `kite build`, and `kite exec` subcommands (`--bytecode` kept as an alias).
 - Added the `KITE_WERROR` build option.
+- Added the `%` operator, `+= -= *= /= %=` compound assignment, `else if`, C-style `for` loops, and string escapes.
+- Fixed the interpreter looping forever on `return` inside a `while` body.
 - Fixed a bytecode compiler bug where an `if` without an `else` left the condition value unbalanced on the stack.
 - Removed a duplicate `while` keyword branch in the lexer.

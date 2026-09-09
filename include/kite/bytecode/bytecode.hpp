@@ -28,6 +28,7 @@ enum class OpCode {
     Subtract,
     Multiply,
     Divide,
+    Modulo,
     Equal,
     NotEqual,
     Less,
@@ -95,7 +96,7 @@ private:
 };
 
 inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};
-inline constexpr std::uint32_t kBytecodeFormatVersion = 2;
+inline constexpr std::uint32_t kBytecodeFormatVersion = 3;
 
 bool validate_chunk(const Chunk& chunk, std::string& error);
 bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error);

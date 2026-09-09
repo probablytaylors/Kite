@@ -14,6 +14,8 @@ const char* token_type_name(TokenType type) {
         return "ELSE";
     case TokenType::While:
         return "WHILE";
+    case TokenType::For:
+        return "FOR";
     case TokenType::Fn:
         return "FN";
     case TokenType::Return:
@@ -32,6 +34,16 @@ const char* token_type_name(TokenType type) {
         return "STRING";
     case TokenType::Equal:
         return "EQUAL";
+    case TokenType::PlusEqual:
+        return "PLUS_EQUAL";
+    case TokenType::MinusEqual:
+        return "MINUS_EQUAL";
+    case TokenType::StarEqual:
+        return "STAR_EQUAL";
+    case TokenType::SlashEqual:
+        return "SLASH_EQUAL";
+    case TokenType::PercentEqual:
+        return "PERCENT_EQUAL";
     case TokenType::EqualEqual:
         return "EQUAL_EQUAL";
     case TokenType::BangEqual:
@@ -58,6 +70,8 @@ const char* token_type_name(TokenType type) {
         return "STAR";
     case TokenType::Slash:
         return "SLASH";
+    case TokenType::Percent:
+        return "PERCENT";
     case TokenType::LeftParen:
         return "LEFT_PAREN";
     case TokenType::RightParen:
@@ -72,6 +86,8 @@ const char* token_type_name(TokenType type) {
         return "RIGHT_BRACKET";
     case TokenType::Colon:
         return "COLON";
+    case TokenType::Semicolon:
+        return "SEMICOLON";
     case TokenType::Comma:
         return "COMMA";
     case TokenType::Invalid:

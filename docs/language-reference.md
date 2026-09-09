@@ -44,11 +44,13 @@ let count = 3
 ```
 
 Bindings are looked up by name. Function calls create a local scope. Existing
-bindings can be updated with assignment:
+bindings can be updated with assignment, including the compound forms `+=`,
+`-=`, `*=`, `/=`, and `%=`:
 
 ```kite
 let count = 0
 count = count + 1
+count += 2
 ```
 
 ## Operators
@@ -56,12 +58,13 @@ count = count + 1
 Arithmetic operators:
 
 ```text
-+  -  *  /
++  -  *  /  %
 ```
 
 Unary minus is supported for numeric expressions. String values can be joined
-with `+`. Multiplication and division bind more tightly than addition and subtraction.
-Division always produces a floating-point result.
+with `+`. `*`, `/`, and `%` bind more tightly than `+` and `-`. Division always
+produces a floating-point result. `%` is integer remainder when both operands
+are integers and `fmod` otherwise; a zero right operand is a runtime error.
 
 Comparison operators:
 
@@ -103,20 +106,34 @@ print(user["name"])
 
 Map keys must be strings. Missing keys and invalid key types are runtime errors.
 
+## Strings
+
+String literals are double-quoted and support the escapes `\n`, `\t`, `\r`,
+`\0`, `\\`, and `\"`.
+
 ## Conditions And Loops
 
 ```kite
-if (score >= 60) {
-    print("passed")
+if (score >= 90) {
+    print("A")
+} else if (score >= 60) {
+    print("pass")
 } else {
-    print("try again")
+    print("fail")
 }
 
 while (count < 3) {
     print(count)
-    let count = count + 1
+    count += 1
+}
+
+for (let i = 0; i < 3; i += 1) {
+    print(i)
 }
 ```
+
+The `for` clauses are a statement, an expression, and a statement; any of the
+three may be omitted.
 
 Conditions must evaluate to booleans.
 

@@ -2,9 +2,43 @@
 
 #include <charconv>
 #include <cstdlib>
+#include <optional>
 #include <utility>
 
 namespace kite {
+
+namespace {
+
+std::string decode_string_literal(const std::string& lexeme) {
+    std::string value;
+    for (std::size_t index = 1; index + 1 < lexeme.size(); ++index) {
+        if (lexeme[index] != '\\' || index + 2 >= lexeme.size()) {
+            value.push_back(lexeme[index]);
+            continue;
+        }
+        switch (lexeme[++index]) {
+        case 'n': value.push_back('\n'); break;
+        case 't': value.push_back('\t'); break;
+        case 'r': value.push_back('\r'); break;
+        case '0': value.push_back('\0'); break;
+        case '\\': value.push_back('\\'); break;
+        case '"': value.push_back('"'); break;
+        default: value.push_back(lexeme[index]); break;
+        }
+    }
+    return value;
+}
+
+std::unique_ptr<Expression> make_binary(BinaryOperator op, std::unique_ptr<Expression> left,
+    std::unique_ptr<Expression> right) {
+    auto binary = std::make_unique<BinaryExpression>();
+    binary->operator_type = op;
+    binary->left = std::move(left);
+    binary->right = std::move(right);
+    return binary;
+}
+
+} // namespace
 
 Parser::Parser(Lexer lexer) : lexer_(std::move(lexer)), current_(lexer_.next_token()) {}
 
@@ -62,6 +96,9 @@ std::unique_ptr<Statement> Parser::parse_statement() {
     if (current_.type == TokenType::While) {
         return parse_while_statement();
     }
+    if (current_.type == TokenType::For) {
+        return parse_for_statement();
+    }
     if (current_.type == TokenType::Fn) {
         return parse_function_statement();
     }
@@ -114,10 +151,18 @@ std::unique_ptr<Statement> Parser::parse_if_statement() {
     statement->then_branch = parse_block();
     if (current_.type == TokenType::Else) {
         advance();
-        if (!expect(TokenType::LeftBrace, "expected '{' after 'else'")) {
-            return nullptr;
+        if (current_.type == TokenType::If) {
+            auto nested = parse_if_statement();
+            if (!nested) {
+                return nullptr;
+            }
+            statement->else_branch.push_back(std::move(nested));
+        } else {
+            if (!expect(TokenType::LeftBrace, "expected '{' after 'else'")) {
+                return nullptr;
+            }
+            statement->else_branch = parse_block();
         }
-        statement->else_branch = parse_block();
     }
 
     return statement;
@@ -135,6 +180,49 @@ std::unique_ptr<Statement> Parser::parse_while_statement() {
         return nullptr;
     }
     if (!expect(TokenType::LeftBrace, "expected '{' after while condition")) {
+        return nullptr;
+    }
+
+    statement->body = parse_block();
+    return statement;
+}
+
+std::unique_ptr<Statement> Parser::parse_for_statement() {
+    advance();
+    if (!expect(TokenType::LeftParen, "expected '(' after 'for'")) {
+        return nullptr;
+    }
+
+    auto statement = std::make_unique<ForStatement>();
+
+    if (current_.type != TokenType::Semicolon) {
+        statement->initializer = parse_statement();
+        if (!statement->initializer) {
+            return nullptr;
+        }
+    }
+    if (!expect(TokenType::Semicolon, "expected ';' after for initializer")) {
+        return nullptr;
+    }
+
+    if (current_.type != TokenType::Semicolon) {
+        statement->condition = parse_expression();
+        if (!statement->condition) {
+            return nullptr;
+        }
+    }
+    if (!expect(TokenType::Semicolon, "expected ';' after for condition")) {
+        return nullptr;
+    }
+
+    if (current_.type != TokenType::RightParen) {
+        statement->step = parse_statement();
+        if (!statement->step) {
+            return nullptr;
+        }
+    }
+    if (!expect(TokenType::RightParen, "expected ')' after for clauses") ||
+        !expect(TokenType::LeftBrace, "expected '{' after for clauses")) {
         return nullptr;
     }
 
@@ -205,12 +293,36 @@ std::unique_ptr<Statement> Parser::parse_assignment_or_expression_statement() {
     if (current_.type == TokenType::Identifier) {
         const std::string name = current_.lexeme;
         advance();
+
         if (current_.type == TokenType::Equal) {
             advance();
             auto statement = std::make_unique<AssignmentStatement>();
             statement->name = name;
             statement->value = parse_expression();
             return statement->value ? std::move(statement) : nullptr;
+        }
+
+        const auto compound = [&]() -> std::optional<BinaryOperator> {
+            switch (current_.type) {
+            case TokenType::PlusEqual: return BinaryOperator::Add;
+            case TokenType::MinusEqual: return BinaryOperator::Subtract;
+            case TokenType::StarEqual: return BinaryOperator::Multiply;
+            case TokenType::SlashEqual: return BinaryOperator::Divide;
+            case TokenType::PercentEqual: return BinaryOperator::Modulo;
+            default: return std::nullopt;
+            }
+        }();
+        if (compound) {
+            advance();
+            auto right = parse_expression();
+            if (!right) {
+                return nullptr;
+            }
+            auto statement = std::make_unique<AssignmentStatement>();
+            statement->name = name;
+            statement->value = make_binary(*compound, std::make_unique<IdentifierExpression>(name),
+                std::move(right));
+            return statement;
         }
 
         std::unique_ptr<Expression> expression = std::make_unique<IdentifierExpression>(name);
@@ -347,10 +459,11 @@ std::unique_ptr<Expression> Parser::parse_multiplicative() {
         return nullptr;
     }
 
-    while (current_.type == TokenType::Star || current_.type == TokenType::Slash) {
+    while (current_.type == TokenType::Star || current_.type == TokenType::Slash ||
+        current_.type == TokenType::Percent) {
         const BinaryOperator operator_type = current_.type == TokenType::Star
             ? BinaryOperator::Multiply
-            : BinaryOperator::Divide;
+            : current_.type == TokenType::Slash ? BinaryOperator::Divide : BinaryOperator::Modulo;
         advance();
         auto right = parse_unary();
         if (!right) {
@@ -425,9 +538,9 @@ std::unique_ptr<Expression> Parser::parse_primary() {
         return std::make_unique<FloatExpression>(value);
     }
     case TokenType::String: {
-        const std::string value = current_.lexeme.substr(1, current_.lexeme.size() - 2);
+        std::string value = decode_string_literal(current_.lexeme);
         advance();
-        return std::make_unique<StringExpression>(value);
+        return std::make_unique<StringExpression>(std::move(value));
     }
     case TokenType::LeftBracket:
         return parse_postfix(parse_array());
