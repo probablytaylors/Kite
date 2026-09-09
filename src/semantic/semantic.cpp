@@ -96,6 +96,18 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         if (*variable == SemanticType::Unknown) *variable = value_type;
         return;
     }
+    if (const auto* index_assignment = dynamic_cast<const IndexAssignmentStatement*>(&statement)) {
+        const SemanticType target = analyze_expression(*index_assignment->target);
+        const SemanticType key = analyze_expression(*index_assignment->index);
+        analyze_expression(*index_assignment->value);
+        if (target == SemanticType::Array && key != SemanticType::Integer && key != SemanticType::Unknown) {
+            report_error("array index must be an integer");
+        }
+        if (target == SemanticType::Map && key != SemanticType::String && key != SemanticType::Unknown) {
+            report_error("map key must be a string");
+        }
+        return;
+    }
     if (const auto* expression = dynamic_cast<const ExpressionStatement*>(&statement)) {
         analyze_expression(*expression->expression);
         return;
@@ -166,8 +178,14 @@ SemanticType SemanticAnalyzer::analyze_expression(const Expression& expression) 
     if (const auto* index = dynamic_cast<const IndexExpression*>(&expression)) {
         const SemanticType target = analyze_expression(*index->target);
         const SemanticType position = analyze_expression(*index->index);
-        if (target == SemanticType::Array && position != SemanticType::Integer) report_error("array index must be integer");
-        if (target == SemanticType::Map && position != SemanticType::String) report_error("map index must be string");
+        if (target == SemanticType::Array && position != SemanticType::Integer &&
+            position != SemanticType::Unknown) {
+            report_error("array index must be integer");
+        }
+        if (target == SemanticType::Map && position != SemanticType::String &&
+            position != SemanticType::Unknown) {
+            report_error("map index must be string");
+        }
         return SemanticType::Unknown;
     }
     if (const auto* unary = dynamic_cast<const UnaryExpression*>(&expression)) {

@@ -3,6 +3,9 @@
 #include <cmath>
 #include <fstream>
 #include <utility>
+#include <vector>
+
+#include "kite/builtins.hpp"
 
 namespace kite {
 
@@ -98,6 +101,14 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         } else {
             emit(OpCode::Store, add_constant(Value::string(assignment.name)));
         }
+        return;
+    }
+    case NodeKind::IndexAssignment: {
+        const auto& assignment = static_cast<const IndexAssignmentStatement&>(statement);
+        compile_expression(*assignment.target);
+        compile_expression(*assignment.index);
+        compile_expression(*assignment.value);
+        emit(OpCode::SetIndex);
         return;
     }
     case NodeKind::ExpressionStatement:
@@ -221,6 +232,16 @@ void BytecodeCompiler::compile_expression(const Expression& expression) {
     }
     case NodeKind::Binary: {
         const auto& binary = static_cast<const BinaryExpression&>(expression);
+        if (binary.operator_type == BinaryOperator::And || binary.operator_type == BinaryOperator::Or) {
+            compile_expression(*binary.left);
+            emit(OpCode::Dup);
+            const std::size_t short_circuit = emit_jump(
+                binary.operator_type == BinaryOperator::And ? OpCode::JumpIfFalse : OpCode::JumpIfTrue);
+            emit(OpCode::Pop);
+            compile_expression(*binary.right);
+            patch_jump(short_circuit, chunk_.code.size());
+            return;
+        }
         compile_expression(*binary.left);
         compile_expression(*binary.right);
         switch (binary.operator_type) {
@@ -258,7 +279,9 @@ void BytecodeCompiler::compile_expression(const Expression& expression) {
             emit(OpCode::Constant, add_constant(Value::string("")));
             return;
         }
-        report_error("bytecode compiler does not support the call to '" + name + "' yet");
+        emit(OpCode::Constant, add_constant(Value::string(name)));
+        for (const auto& argument : call.arguments) compile_expression(*argument);
+        emit(OpCode::CallNative, call.arguments.size());
         return;
     }
     default:
@@ -316,6 +339,32 @@ bool BytecodeVm::run(const Chunk& chunk) {
             instruction_pointer = function.address - 1;
             break;
         }
+        case OpCode::CallNative: {
+            const std::size_t count = instruction.operand;
+            if (stack_.size() < count + 1) { report_error("stack underflow on builtin call"); return false; }
+            std::vector<Value> arguments;
+            arguments.reserve(count);
+            const std::size_t first = stack_.size() - count;
+            for (std::size_t index = 0; index < count; ++index) {
+                arguments.push_back(std::move(stack_[first + index]));
+            }
+            stack_.resize(first);
+            Value name = std::move(stack_.back());
+            stack_.pop_back();
+            const BuiltinFn builtin = find_builtin(name.as_string());
+            if (builtin == nullptr) {
+                report_error("unknown function: " + name.as_string());
+                return false;
+            }
+            BuiltinContext context{output_, {}};
+            Value result;
+            if (!builtin(context, arguments, result)) {
+                report_error(context.error);
+                return false;
+            }
+            stack_.push_back(std::move(result));
+            break;
+        }
         case OpCode::Return:
         case OpCode::ReturnLocal:
         case OpCode::ReturnConst: {
@@ -368,12 +417,23 @@ bool BytecodeVm::run(const Chunk& chunk) {
             if (stack_.empty()) { report_error("stack underflow on pop"); return false; }
             stack_.pop_back();
             break;
+        case OpCode::Dup:
+            if (stack_.empty()) { report_error("stack underflow on dup"); return false; }
+            stack_.push_back(stack_[stack_.size() - 1]);
+            break;
         case OpCode::Jump:
             instruction_pointer = instruction.operand - 1;
             break;
         case OpCode::JumpIfFalse: {
             if (stack_.empty()) { report_error("stack underflow on conditional jump"); return false; }
             const bool take_jump = !stack_.back().is_truthy();
+            stack_.pop_back();
+            if (take_jump) instruction_pointer = instruction.operand - 1;
+            break;
+        }
+        case OpCode::JumpIfTrue: {
+            if (stack_.empty()) { report_error("stack underflow on conditional jump"); return false; }
+            const bool take_jump = stack_.back().is_truthy();
             stack_.pop_back();
             if (take_jump) instruction_pointer = instruction.operand - 1;
             break;
@@ -415,6 +475,14 @@ bool BytecodeVm::run(const Chunk& chunk) {
                     return false;
                 }
                 stack_.push_back(elements[static_cast<std::size_t>(index.as_int())]);
+            } else if (target.is_string()) {
+                const std::string& text = target.as_string();
+                if (!index.is_int() || index.as_int() < 0 ||
+                    static_cast<std::size_t>(index.as_int()) >= text.size()) {
+                    report_error("string index out of bounds");
+                    return false;
+                }
+                stack_.push_back(Value::string(std::string(1, text[static_cast<std::size_t>(index.as_int())])));
             } else if (target.is_map()) {
                 const auto& entries = target.as_map();
                 if (!index.is_string() || !entries.contains(index.as_string())) {
@@ -424,6 +492,29 @@ bool BytecodeVm::run(const Chunk& chunk) {
                 stack_.push_back(entries.at(index.as_string()));
             } else {
                 report_error("index target must be an array or map");
+                return false;
+            }
+            break;
+        }
+        case OpCode::SetIndex: {
+            if (stack_.size() < 3) { report_error("stack underflow on index assignment"); return false; }
+            Value value = std::move(stack_.back()); stack_.pop_back();
+            Value index = std::move(stack_.back()); stack_.pop_back();
+            Value target = std::move(stack_.back()); stack_.pop_back();
+            if (target.is_array()) {
+                if (!index.is_int()) { report_error("array index must be an integer"); return false; }
+                auto& elements = target.as_array();
+                const std::int64_t position = index.as_int();
+                if (position < 0 || static_cast<std::size_t>(position) >= elements.size()) {
+                    report_error("array index out of bounds");
+                    return false;
+                }
+                elements[static_cast<std::size_t>(position)] = std::move(value);
+            } else if (target.is_map()) {
+                if (!index.is_string()) { report_error("map key must be a string"); return false; }
+                target.as_map()[index.as_string()] = std::move(value);
+            } else {
+                report_error("cannot assign to an index of this value");
                 return false;
             }
             break;
@@ -507,13 +598,14 @@ bool BytecodeVm::binary_operation(OpCode opcode) {
     case OpCode::GreaterEqual: stack_.push_back(left_number >= right_number); return true;
     default: break;
     }
-    if (left.is_int() && right.is_int() && opcode != OpCode::Divide) {
+    if (left.is_int() && right.is_int()) {
         const std::int64_t a = left.as_int();
         const std::int64_t b = right.as_int();
         switch (opcode) {
         case OpCode::Add: stack_.push_back(a + b); break;
         case OpCode::Subtract: stack_.push_back(a - b); break;
         case OpCode::Multiply: stack_.push_back(a * b); break;
+        case OpCode::Divide: stack_.push_back(a / b); break;
         case OpCode::Modulo: stack_.push_back(a % b); break;
         default: break;
         }
@@ -610,11 +702,12 @@ bool operand_is_constant_index(OpCode opcode) {
 }
 
 bool operand_is_jump_target(OpCode opcode) {
-    return opcode == OpCode::Jump || opcode == OpCode::JumpIfFalse;
+    return opcode == OpCode::Jump || opcode == OpCode::JumpIfFalse || opcode == OpCode::JumpIfTrue;
 }
 
 bool operand_is_count(OpCode opcode) {
-    return opcode == OpCode::Print || opcode == OpCode::MakeArray || opcode == OpCode::MakeMap;
+    return opcode == OpCode::Print || opcode == OpCode::MakeArray || opcode == OpCode::MakeMap ||
+        opcode == OpCode::CallNative;
 }
 
 bool operand_is_slot(OpCode opcode) {

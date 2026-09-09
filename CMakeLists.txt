@@ -11,6 +11,7 @@ configure_file(
 )
 
 add_library(kite_core STATIC
+    src/builtins.cpp
     src/bytecode/bytecode.cpp
     src/interpreter/interpreter.cpp
     src/lexer/lexer.cpp

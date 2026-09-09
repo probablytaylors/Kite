@@ -22,6 +22,7 @@ enum class NodeKind {
     Call,
     Let,
     Assignment,
+    IndexAssignment,
     ExpressionStatement,
     If,
     While,
@@ -165,6 +166,14 @@ struct AssignmentStatement final : Statement {
     std::string name;
     std::unique_ptr<Expression> value;
     int slot = kGlobalSlot;
+};
+
+struct IndexAssignmentStatement final : Statement {
+    IndexAssignmentStatement() : Statement(NodeKind::IndexAssignment) {}
+
+    std::unique_ptr<Expression> target;
+    std::unique_ptr<Expression> index;
+    std::unique_ptr<Expression> value;
 };
 
 struct ExpressionStatement final : Statement {

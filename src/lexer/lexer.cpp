@@ -34,8 +34,14 @@ char Lexer::advance() {
 }
 
 void Lexer::skip_whitespace() {
-    while (std::isspace(static_cast<unsigned char>(current()))) {
-        advance();
+    while (true) {
+        if (std::isspace(static_cast<unsigned char>(current()))) {
+            advance();
+        } else if (current() == '#') {
+            while (current() != '\n' && current() != '\0') advance();
+        } else {
+            return;
+        }
     }
 }
 

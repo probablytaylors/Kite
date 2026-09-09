@@ -212,7 +212,6 @@ private:
         }
         if (left != Type::Int && left != Type::Float) { fail("arithmetic needs numeric operands"); return Type::Error; }
         if (right != Type::Int && right != Type::Float) { fail("arithmetic needs numeric operands"); return Type::Error; }
-        if (op == BinaryOperator::Divide) return Type::Float;
         return (left == Type::Float || right == Type::Float) ? Type::Float : Type::Int;
     }
 
@@ -438,10 +437,7 @@ private:
         }
         case NodeKind::Binary: {
             const auto& binary = static_cast<const BinaryExpression&>(expression);
-            const bool as_float = types_.count(&expression) && types_[&expression] == Type::Float &&
-                binary.operator_type == BinaryOperator::Divide;
             out << '(';
-            if (as_float) out << "(double)";
             emit_expression(out, *binary.left);
             out << ' ' << binary_operator(binary.operator_type) << ' ';
             emit_expression(out, *binary.right);

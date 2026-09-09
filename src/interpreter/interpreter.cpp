@@ -1,22 +1,11 @@
 #include "kite/interpreter/interpreter.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cmath>
-#include <fstream>
-#include <iterator>
-#include <limits>
 #include <utility>
 
+#include "kite/builtins.hpp"
+
 namespace kite {
-
-namespace {
-
-double numeric_value(const Value& value) {
-    return value.is_number() ? value.as_number() : std::numeric_limits<double>::quiet_NaN();
-}
-
-} // namespace
 
 Interpreter::Interpreter(std::ostream& output) : output_(output) {}
 
@@ -86,6 +75,41 @@ bool Interpreter::execute_statement(const Statement& statement) {
         }
         *variable = std::move(value);
         return true;
+    }
+
+    case NodeKind::IndexAssignment: {
+        const auto& assignment = static_cast<const IndexAssignmentStatement&>(statement);
+        Value target;
+        Value index;
+        Value value;
+        if (!evaluate(*assignment.target, target) || !evaluate(*assignment.index, index) ||
+            !evaluate(*assignment.value, value)) {
+            return false;
+        }
+        if (target.is_array()) {
+            if (!index.is_int()) {
+                report_error("array index must be an integer");
+                return false;
+            }
+            auto& elements = target.as_array();
+            const std::int64_t position = index.as_int();
+            if (position < 0 || static_cast<std::size_t>(position) >= elements.size()) {
+                report_error("array index out of bounds");
+                return false;
+            }
+            elements[static_cast<std::size_t>(position)] = std::move(value);
+            return true;
+        }
+        if (target.is_map()) {
+            if (!index.is_string()) {
+                report_error("map key must be a string");
+                return false;
+            }
+            target.as_map()[index.as_string()] = std::move(value);
+            return true;
+        }
+        report_error("cannot assign to an index of this value");
+        return false;
     }
 
     case NodeKind::ExpressionStatement: {
@@ -331,13 +355,14 @@ bool Interpreter::evaluate_binary(const BinaryExpression& binary, Value& value) 
         return false;
     }
 
-    if (both_integer && binary.operator_type != BinaryOperator::Divide) {
+    if (both_integer) {
         const std::int64_t a = left.as_int();
         const std::int64_t b = right.as_int();
         switch (binary.operator_type) {
         case BinaryOperator::Add: value = a + b; break;
         case BinaryOperator::Subtract: value = a - b; break;
         case BinaryOperator::Multiply: value = a * b; break;
+        case BinaryOperator::Divide: value = a / b; break;
         case BinaryOperator::Modulo: value = a % b; break;
         default: break;
         }
@@ -400,232 +425,22 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         return execute_function(*function->second, base, call.arguments.size(), value);
     }
 
-    if (callee->name == "print") {
-        for (std::size_t index = 0; index < call.arguments.size(); ++index) {
-            Value argument;
-            if (!evaluate(*call.arguments[index], argument)) {
-                return false;
-            }
-            if (index > 0) {
-                output_ << ' ';
-            }
-            output_ << to_string(argument);
-        }
-        output_ << '\n';
-        value = Value::string("");
-        return true;
-    }
-
-    if (callee->name == "len") {
-        if (call.arguments.size() != 1) {
-            report_error("function 'len' expects one argument");
-            return false;
-        }
+    std::vector<Value> arguments;
+    arguments.reserve(call.arguments.size());
+    for (const auto& argument_expression : call.arguments) {
         Value argument;
-        if (!evaluate(*call.arguments[0], argument)) {
+        if (!evaluate(*argument_expression, argument)) {
             return false;
         }
-        if (argument.is_string()) {
-            value = static_cast<std::int64_t>(argument.as_string().size());
-            return true;
-        }
-        if (argument.is_array()) {
-            value = static_cast<std::int64_t>(argument.as_array().size());
-            return true;
-        }
-        if (argument.is_map()) {
-            value = static_cast<std::int64_t>(argument.as_map().size());
-            return true;
-        }
-        report_error("function 'len' requires a string, array, or map");
-        return false;
+        arguments.push_back(std::move(argument));
     }
 
-    if (callee->name == "upper" || callee->name == "lower") {
-        if (call.arguments.size() != 1) {
-            report_error("function '" + callee->name + "' expects one argument");
+    if (const BuiltinFn builtin = find_builtin(callee->name)) {
+        BuiltinContext context{output_, {}};
+        if (!builtin(context, arguments, value)) {
+            report_error(context.error);
             return false;
         }
-        Value argument;
-        if (!evaluate(*call.arguments[0], argument)) {
-            return false;
-        }
-        if (!argument.is_string()) {
-            report_error("function '" + callee->name + "' requires a string");
-            return false;
-        }
-        std::string result = argument.as_string();
-        const bool upper = callee->name == "upper";
-        std::transform(result.begin(), result.end(), result.begin(), [upper](unsigned char character) {
-            return static_cast<char>(upper ? std::toupper(character) : std::tolower(character));
-        });
-        value = Value::string(std::move(result));
-        return true;
-    }
-
-    if (callee->name == "read_file") {
-        if (call.arguments.size() != 1) {
-            report_error("function 'read_file' expects one argument");
-            return false;
-        }
-        Value argument;
-        if (!evaluate(*call.arguments[0], argument)) {
-            return false;
-        }
-        if (!argument.is_string()) {
-            report_error("function 'read_file' requires a string path");
-            return false;
-        }
-        std::ifstream input(argument.as_string(), std::ios::binary);
-        if (!input) {
-            report_error("could not open file: " + argument.as_string());
-            return false;
-        }
-        value = Value::string(std::string((std::istreambuf_iterator<char>(input)),
-            std::istreambuf_iterator<char>()));
-        return true;
-    }
-
-    if (callee->name == "write_file") {
-        if (call.arguments.size() != 2) {
-            report_error("function 'write_file' expects two arguments");
-            return false;
-        }
-        Value path_value;
-        Value content_value;
-        if (!evaluate(*call.arguments[0], path_value) || !evaluate(*call.arguments[1], content_value)) {
-            return false;
-        }
-        if (!path_value.is_string() || !content_value.is_string()) {
-            report_error("function 'write_file' requires string path and content");
-            return false;
-        }
-        std::ofstream output(path_value.as_string(), std::ios::binary);
-        if (!output) {
-            report_error("could not write file: " + path_value.as_string());
-            return false;
-        }
-        output << content_value.as_string();
-        value = true;
-        return true;
-    }
-
-    if (callee->name == "type_of") {
-        if (call.arguments.size() != 1) {
-            report_error("function 'type_of' expects one argument");
-            return false;
-        }
-        Value argument;
-        if (!evaluate(*call.arguments[0], argument)) return false;
-        value = Value::string(type_name(argument));
-        return true;
-    }
-
-    if (callee->name == "append") {
-        if (call.arguments.size() != 2) {
-            report_error("function 'append' expects two arguments");
-            return false;
-        }
-        Value target;
-        Value element;
-        if (!evaluate(*call.arguments[0], target) || !evaluate(*call.arguments[1], element)) return false;
-        if (!target.is_array()) {
-            report_error("function 'append' requires an array");
-            return false;
-        }
-        target.as_array().push_back(std::move(element));
-        value = std::move(target);
-        return true;
-    }
-
-    if (callee->name == "pop") {
-        if (call.arguments.size() != 1) {
-            report_error("function 'pop' expects one argument");
-            return false;
-        }
-        Value target;
-        if (!evaluate(*call.arguments[0], target)) return false;
-        if (!target.is_array() || target.as_array().empty()) {
-            report_error("function 'pop' requires a non-empty array");
-            return false;
-        }
-        value = std::move(target.as_array().back());
-        target.as_array().pop_back();
-        return true;
-    }
-
-    const auto math_function = [&](double (*function)(double), bool non_negative) {
-        if (call.arguments.size() != 1) {
-            report_error("math function '" + callee->name + "' expects one argument");
-            return false;
-        }
-        Value argument;
-        if (!evaluate(*call.arguments[0], argument)) {
-            return false;
-        }
-        const double number = numeric_value(argument);
-        if (std::isnan(number)) {
-            report_error("math function '" + callee->name + "' requires a numeric argument");
-            return false;
-        }
-        if (non_negative && number < 0.0) {
-            report_error("math function '" + callee->name + "' requires a non-negative argument");
-            return false;
-        }
-        value = function(number);
-        return true;
-    };
-
-    if (callee->name == "sqrt") return math_function(static_cast<double (*)(double)>(std::sqrt), true);
-    if (callee->name == "sin") return math_function(static_cast<double (*)(double)>(std::sin), false);
-    if (callee->name == "cos") return math_function(static_cast<double (*)(double)>(std::cos), false);
-    if (callee->name == "tan") return math_function(static_cast<double (*)(double)>(std::tan), false);
-    if (callee->name == "log") return math_function(static_cast<double (*)(double)>(std::log), true);
-    if (callee->name == "abs") return math_function(static_cast<double (*)(double)>(std::fabs), false);
-    if (callee->name == "floor") return math_function(static_cast<double (*)(double)>(std::floor), false);
-    if (callee->name == "ceil") return math_function(static_cast<double (*)(double)>(std::ceil), false);
-    if (callee->name == "exp") return math_function(static_cast<double (*)(double)>(std::exp), false);
-    if (callee->name == "asin") return math_function(static_cast<double (*)(double)>(std::asin), false);
-    if (callee->name == "acos") return math_function(static_cast<double (*)(double)>(std::acos), false);
-    if (callee->name == "atan") return math_function(static_cast<double (*)(double)>(std::atan), false);
-
-    if (callee->name == "pow") {
-        if (call.arguments.size() != 2) {
-            report_error("math function 'pow' expects two arguments");
-            return false;
-        }
-        Value base;
-        Value exponent;
-        if (!evaluate(*call.arguments[0], base) || !evaluate(*call.arguments[1], exponent)) {
-            return false;
-        }
-        const double base_number = numeric_value(base);
-        const double exponent_number = numeric_value(exponent);
-        if (std::isnan(base_number) || std::isnan(exponent_number)) {
-            report_error("math function 'pow' requires numeric arguments");
-            return false;
-        }
-        value = std::pow(base_number, exponent_number);
-        return true;
-    }
-
-    if (callee->name == "atan2" || callee->name == "min" || callee->name == "max") {
-        if (call.arguments.size() != 2) {
-            report_error("function '" + callee->name + "' expects two arguments");
-            return false;
-        }
-        Value left;
-        Value right;
-        if (!evaluate(*call.arguments[0], left) || !evaluate(*call.arguments[1], right)) return false;
-        if (!left.is_number() || !right.is_number()) {
-            report_error("function '" + callee->name + "' requires numeric arguments");
-            return false;
-        }
-        const double left_number = left.as_number();
-        const double right_number = right.as_number();
-        if (callee->name == "atan2") value = std::atan2(left_number, right_number);
-        else if (callee->name == "min") value = std::min(left_number, right_number);
-        else value = std::max(left_number, right_number);
         return true;
     }
 
@@ -652,6 +467,20 @@ bool Interpreter::evaluate_index(const IndexExpression& index, Value& value) {
             return false;
         }
         value = entry->second;
+        return true;
+    }
+    if (target.is_string()) {
+        if (!position.is_int()) {
+            report_error("string index must be an integer");
+            return false;
+        }
+        const std::string& text = target.as_string();
+        const std::int64_t at = position.as_int();
+        if (at < 0 || static_cast<std::size_t>(at) >= text.size()) {
+            report_error("string index out of bounds");
+            return false;
+        }
+        value = Value::string(std::string(1, text[static_cast<std::size_t>(at)]));
         return true;
     }
     if (!target.is_array() || !position.is_int()) {

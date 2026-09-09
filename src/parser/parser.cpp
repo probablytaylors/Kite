@@ -359,6 +359,24 @@ std::unique_ptr<Statement> Parser::parse_assignment_or_expression_statement() {
 
         std::unique_ptr<Expression> expression = std::make_unique<IdentifierExpression>(name);
         expression = parse_postfix(std::move(expression));
+        if (!expression) {
+            return nullptr;
+        }
+
+        if (expression->kind == NodeKind::Index && current_.type == TokenType::Equal) {
+            auto& indexed = static_cast<IndexExpression&>(*expression);
+            advance();
+            auto right = parse_expression();
+            if (!right) {
+                return nullptr;
+            }
+            auto statement = std::make_unique<IndexAssignmentStatement>();
+            statement->target = std::move(indexed.target);
+            statement->index = std::move(indexed.index);
+            statement->value = std::move(right);
+            return statement;
+        }
+
         auto statement = std::make_unique<ExpressionStatement>();
         statement->expression = std::move(expression);
         return statement;

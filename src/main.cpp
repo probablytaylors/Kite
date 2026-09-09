@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "kite/builtins.hpp"
 #include "kite/interpreter/interpreter.hpp"
 #include "kite/bytecode/bytecode.hpp"
 #include "kite/native/native.hpp"
@@ -227,16 +228,18 @@ int native_command(const std::vector<std::string>& args) {
 int run_command(const std::vector<std::string>& args) {
     bool use_bytecode = false;
     std::string source_path;
+    std::vector<std::string> program_args;
     for (const auto& arg : args) {
-        if (arg == "--bytecode") {
+        if (source_path.empty() && arg == "--bytecode") {
             use_bytecode = true;
         } else if (source_path.empty()) {
             source_path = arg;
         } else {
-            return usage();
+            program_args.push_back(arg);
         }
     }
     if (source_path.empty()) return usage();
+    kite::set_program_args(std::move(program_args));
     return run_source(source_path, use_bytecode);
 }
 
@@ -253,7 +256,6 @@ int main(int argc, char* argv[]) {
     if (args[0] == "native") return native_command({args.begin() + 1, args.end()});
     if (args[0] == "update") return update_command({args.begin() + 1, args.end()});
     if (args[0] == "--bytecode") return run_command(args);
-
-    if (args.size() == 1) return run_source(args[0], false);
+    if (!args[0].empty() && args[0][0] != '-') return run_command(args);
     return usage();
 }

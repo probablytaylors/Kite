@@ -93,6 +93,13 @@ void resolve_statement(Statement& statement, Scope& scope) {
         assignment.slot = scope.lookup(assignment.name);
         return;
     }
+    case NodeKind::IndexAssignment: {
+        auto& assignment = static_cast<IndexAssignmentStatement&>(statement);
+        resolve_expression(*assignment.target, scope);
+        resolve_expression(*assignment.index, scope);
+        resolve_expression(*assignment.value, scope);
+        return;
+    }
     case NodeKind::ExpressionStatement:
         resolve_expression(*static_cast<ExpressionStatement&>(statement).expression, scope);
         return;
