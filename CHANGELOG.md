@@ -2,10 +2,30 @@
 
 ## Unreleased
 
-- Fixed the semantic analyzer rejecting valid code: a variable holding a
-  function's result could not be reassigned, and a parameter could not be used
-  as an `if`/`while`/`for` condition.
-- Added `examples/stackvm.kite`, a stack machine with a call stack written in Kite.
+### Performance
+
+- Dispatch AST nodes by a `NodeKind` tag instead of `dynamic_cast` chains.
+- A resolver pass assigns parameters and function-locals call-frame slots; the
+  interpreter and VM index a flat value stack instead of hashing names.
+- User-defined functions now compile and run on the bytecode VM (call frames,
+  `LoadLocal`/`StoreLocal`, a function table; `.kbc` format 5).
+- `Value` is a 16-byte tagged union with intrusive refcounting, shared by the
+  interpreter and VM, replacing the 40-byte `std::variant`.
+- Net: recursive `fib(30)` went from ~28x slower than CPython to ~2x on the
+  interpreter and ~1.15x on the VM.
+
+### Fixed
+
+- The semantic analyzer rejected valid code: a variable holding a function's
+  result could not be reassigned, a parameter could not be an `if`/`while`/`for`
+  condition, and `string + <call result>` was rejected.
+- `return f(x)` clobbered its own result through an aliased output parameter.
+- Deep recursion crashed the process; it now stops at depth 1000 with an error.
+- Printing a self-referential array or map no longer overflows the stack.
+
+### Added
+
+- `examples/stackvm.kite`, a stack machine with a call stack written in Kite.
 
 ## 0.1.0 - 2026-09-08
 

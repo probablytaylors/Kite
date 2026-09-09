@@ -38,7 +38,9 @@ const char* type_name(const Value& value) {
     return "nil";
 }
 
-std::string to_string(const Value& value) {
+namespace {
+
+std::string to_string(const Value& value, int depth) {
     switch (value.type()) {
     case ValueType::Nil:
         return "";
@@ -54,17 +56,19 @@ std::string to_string(const Value& value) {
     case ValueType::String:
         return value.as_string();
     case ValueType::Array: {
+        if (depth > 64) return "[...]";
         std::ostringstream output;
         output << '[';
         const auto& elements = value.as_array();
         for (std::size_t index = 0; index < elements.size(); ++index) {
             if (index > 0) output << ", ";
-            output << to_string(elements[index]);
+            output << to_string(elements[index], depth + 1);
         }
         output << ']';
         return output.str();
     }
     case ValueType::Map: {
+        if (depth > 64) return "{...}";
         std::ostringstream output;
         output << '{';
         std::vector<std::string> keys;
@@ -72,13 +76,19 @@ std::string to_string(const Value& value) {
         std::sort(keys.begin(), keys.end());
         for (std::size_t index = 0; index < keys.size(); ++index) {
             if (index > 0) output << ", ";
-            output << '"' << keys[index] << "\": " << to_string(value.as_map().at(keys[index]));
+            output << '"' << keys[index] << "\": " << to_string(value.as_map().at(keys[index]), depth + 1);
         }
         output << '}';
         return output.str();
     }
     }
     return "";
+}
+
+} // namespace
+
+std::string to_string(const Value& value) {
+    return to_string(value, 0);
 }
 
 } // namespace kite
