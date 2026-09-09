@@ -7,6 +7,7 @@
 #include "kite/interpreter/interpreter.hpp"
 #include "kite/bytecode/bytecode.hpp"
 #include "kite/parser/parser.hpp"
+#include "kite/resolver/resolver.hpp"
 #include "kite/semantic/semantic.hpp"
 #include "kite/version.hpp"
 
@@ -52,6 +53,7 @@ bool front_end(const std::string& source, kite::Program& program) {
         for (const auto& error : analyzer.errors()) std::cerr << error << '\n';
         return false;
     }
+    kite::resolve(program);
     return true;
 }
 

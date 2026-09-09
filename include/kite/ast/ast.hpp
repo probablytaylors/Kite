@@ -48,11 +48,16 @@ struct Program {
     std::vector<std::unique_ptr<Statement>> statements;
 };
 
+// slot >= 0 selects a slot in the current call frame; slot < 0 means the name
+// is a global and is looked up by name. Filled in by the resolver.
+constexpr int kGlobalSlot = -1;
+
 struct IdentifierExpression final : Expression {
     explicit IdentifierExpression(std::string name)
         : Expression(NodeKind::Identifier), name(std::move(name)) {}
 
     std::string name;
+    int slot = kGlobalSlot;
 };
 
 struct IntegerExpression final : Expression {
@@ -150,6 +155,7 @@ struct LetStatement final : Statement {
 
     std::string name;
     std::unique_ptr<Expression> initializer;
+    int slot = kGlobalSlot;
 };
 
 struct AssignmentStatement final : Statement {
@@ -157,6 +163,7 @@ struct AssignmentStatement final : Statement {
 
     std::string name;
     std::unique_ptr<Expression> value;
+    int slot = kGlobalSlot;
 };
 
 struct ExpressionStatement final : Statement {
@@ -201,6 +208,7 @@ struct FunctionStatement final : Statement {
     std::string name;
     std::vector<std::string> parameters;
     std::vector<std::unique_ptr<Statement>> body;
+    int frame_size = 0;
 };
 
 } // namespace kite

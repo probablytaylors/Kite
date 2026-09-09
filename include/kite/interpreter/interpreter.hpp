@@ -45,12 +45,15 @@ private:
     bool evaluate_index(const IndexExpression& index, Value& value);
     bool evaluate_identifier(const IdentifierExpression& identifier, Value& value);
     void report_error(const std::string& message);
-    Value* find_variable(const std::string& name);
-    const Value* find_variable(const std::string& name) const;
+    Value* find_global(const std::string& name);
+    Value& local(int slot) { return stack_[frame_base_ + static_cast<std::size_t>(slot)]; }
 
     std::ostream& output_;
     std::vector<std::string> errors_;
-    std::vector<std::unordered_map<std::string, Value>> scopes_;
+    std::unordered_map<std::string, Value> globals_;
+    std::vector<Value> stack_;
+    std::vector<std::size_t> frame_bases_;
+    std::size_t frame_base_ = 0;
     std::unordered_map<std::string, const FunctionStatement*> functions_;
     bool return_pending_ = false;
     Value return_value_ = std::string();

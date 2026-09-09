@@ -33,8 +33,11 @@ double numeric_value(const Value& value) {
 Interpreter::Interpreter(std::ostream& output) : output_(output) {}
 
 bool Interpreter::execute(const Program& program) {
-    scopes_.clear();
-    scopes_.emplace_back();
+    globals_.clear();
+    stack_.clear();
+    stack_.reserve(8192);
+    frame_bases_.clear();
+    frame_base_ = 0;
     functions_.clear();
     return_pending_ = false;
     for (const auto& statement : program.statements) {
@@ -71,7 +74,11 @@ bool Interpreter::execute_statement(const Statement& statement) {
         if (!evaluate(*let.initializer, value)) {
             return false;
         }
-        scopes_.back()[let.name] = std::move(value);
+        if (let.slot >= 0) {
+            local(let.slot) = std::move(value);
+        } else {
+            globals_[let.name] = std::move(value);
+        }
         return true;
     }
 
@@ -81,7 +88,11 @@ bool Interpreter::execute_statement(const Statement& statement) {
         if (!evaluate(*assignment.value, value)) {
             return false;
         }
-        Value* variable = find_variable(assignment.name);
+        if (assignment.slot >= 0) {
+            local(assignment.slot) = std::move(value);
+            return true;
+        }
+        Value* variable = find_global(assignment.name);
         if (variable == nullptr) {
             report_error("unknown variable: " + assignment.name);
             return false;
@@ -761,13 +772,16 @@ bool Interpreter::evaluate_index(const IndexExpression& index, Value& value) {
 }
 
 bool Interpreter::evaluate_identifier(const IdentifierExpression& identifier, Value& value) {
-    const Value* variable = find_variable(identifier.name);
-    if (variable == nullptr) {
+    if (identifier.slot >= 0) {
+        value = local(identifier.slot);
+        return true;
+    }
+    const auto global = globals_.find(identifier.name);
+    if (global == globals_.end()) {
         report_error("unknown variable: " + identifier.name);
         return false;
     }
-
-    value = *variable;
+    value = global->second;
     return true;
 }
 
@@ -779,46 +793,36 @@ bool Interpreter::execute_function(const FunctionStatement& function, const std:
     }
 
     const bool previous_return_pending = return_pending_;
-    const Value previous_return_value = return_value_;
+    Value previous_return_value = std::move(return_value_);
     return_pending_ = false;
-    return_value_ = std::string();
-    scopes_.emplace_back();
-    for (std::size_t index = 0; index < function.parameters.size(); ++index) {
-        scopes_.back()[function.parameters[index]] = arguments[index];
+
+    const std::size_t base = stack_.size();
+    frame_bases_.push_back(frame_base_);
+    frame_base_ = base;
+    stack_.resize(base + static_cast<std::size_t>(function.frame_size));
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+        stack_[base + index] = arguments[index];
     }
 
     const bool succeeded = execute_block(function.body);
     if (succeeded) {
-        value = return_pending_ ? return_value_ : Value(std::string());
+        value = return_pending_ ? std::move(return_value_) : Value(std::string());
     }
-    scopes_.pop_back();
+    stack_.resize(base);
+    frame_base_ = frame_bases_.back();
+    frame_bases_.pop_back();
     return_pending_ = previous_return_pending;
-    return_value_ = previous_return_value;
+    return_value_ = std::move(previous_return_value);
     return succeeded;
 }
 
-const Value* Interpreter::find_variable(const std::string& name) const {
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-        const auto variable = scope->find(name);
-        if (variable != scope->end()) {
-            return &variable->second;
-        }
-    }
-    return nullptr;
+Value* Interpreter::find_global(const std::string& name) {
+    const auto found = globals_.find(name);
+    return found == globals_.end() ? nullptr : &found->second;
 }
 
 void Interpreter::report_error(const std::string& message) {
     errors_.push_back(message);
-}
-
-Value* Interpreter::find_variable(const std::string& name) {
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
-        const auto variable = scope->find(name);
-        if (variable != scope->end()) {
-            return &variable->second;
-        }
-    }
-    return nullptr;
 }
 
 std::string value_to_string(const Value& value) {
