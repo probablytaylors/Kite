@@ -54,6 +54,11 @@ const char* warn_mark() { return g_style ? "\xe2\x9a\xa0" : "!"; }
 const char* cross() { return g_style ? "\xe2\x9c\x97" : "x"; }
 const char* arrow() { return g_style ? "\xe2\x86\x92" : "->"; }
 
+std::string lowercase(std::string text) {
+    for (auto& character : text) character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    return text;
+}
+
 std::string run_capture(const std::string& command) {
     std::string output;
     std::array<char, 512> buffer{};
@@ -109,11 +114,6 @@ struct SemVer {
     int major = 0;
     int minor = 0;
     int patch = 0;
-    bool operator>(const SemVer& other) const {
-        if (major != other.major) return major > other.major;
-        if (minor != other.minor) return minor > other.minor;
-        return patch > other.patch;
-    }
 };
 
 bool parse_semver(const std::string& text, SemVer& out) {
@@ -136,13 +136,47 @@ bool parse_semver(const std::string& text, SemVer& out) {
     return true;
 }
 
+int compare(const SemVer& a, const SemVer& b) {
+    if (a.major != b.major) return a.major < b.major ? -1 : 1;
+    if (a.minor != b.minor) return a.minor < b.minor ? -1 : 1;
+    if (a.patch != b.patch) return a.patch < b.patch ? -1 : 1;
+    return 0;
+}
+
+std::vector<std::string> parse_release_tags(const std::string& feed) {
+    std::vector<std::string> tags;
+    const std::string marker = "/releases/tag/";
+    std::size_t position = 0;
+    while ((position = feed.find(marker, position)) != std::string::npos) {
+        position += marker.size();
+        const std::size_t end = feed.find_first_of("\"'< \r\n", position);
+        if (end == std::string::npos) break;
+        std::string tag = feed.substr(position, end - position);
+        if (!tag.empty() && std::find(tags.begin(), tags.end(), tag) == tags.end()) tags.push_back(tag);
+        position = end;
+    }
+    return tags;
+}
+
 std::string latest_tag() {
-    const std::string url = std::string(kRepoUrl) + "/releases/latest";
     const std::string effective = trim(spinner("Checking for updates",
-        "curl -s -L -o NUL -w \"%{url_effective}\" " + url));
+        "curl -s -L -o NUL -w \"%{url_effective}\" " + std::string(kRepoUrl) + "/releases/latest"));
     const std::size_t marker = effective.find("/tag/");
     if (marker == std::string::npos) return "";
     return effective.substr(marker + 5);
+}
+
+std::vector<std::string> all_tags() {
+    return parse_release_tags(spinner("Fetching releases",
+        "curl -s -L " + std::string(kRepoUrl) + "/releases.atom"));
+}
+
+std::string match_version(const std::string& spec, const std::vector<std::string>& tags) {
+    const std::string want = without_v(spec);
+    for (const auto& tag : tags) {
+        if (tag == spec || without_v(tag) == want) return tag;
+    }
+    return "";
 }
 
 std::vector<std::string> release_highlights(const std::string& tag) {
@@ -170,10 +204,8 @@ std::vector<std::string> release_highlights(const std::string& tag) {
     bool inside = false;
     for (const std::string& line : lines) {
         if (line.rfind("## ", 0) == 0) {
-            std::string title = line.substr(3);
-            for (auto& c : title) c = static_cast<char>(std::tolower(c));
             if (inside) break;
-            if (title.find("unreleased") != std::string::npos) continue;
+            if (lowercase(line).find("unreleased") != std::string::npos) continue;
             inside = true;
             continue;
         }
@@ -196,21 +228,20 @@ std::string file_sha256(const std::string& path) {
     std::string hash = output.substr(line_start + 1, line_end - line_start - 1);
     hash.erase(std::remove_if(hash.begin(), hash.end(), [](unsigned char c) { return std::isspace(c); }),
         hash.end());
-    for (auto& character : hash) character = static_cast<char>(std::tolower(character));
-    return hash;
+    return lowercase(hash);
 }
 
-bool prompt_yes(const std::string& question) {
-    std::cout << "  " << question << ' ' << dim("[Y/n]") << ' ' << std::flush;
+bool prompt_yes(const std::string& question, bool default_yes) {
+    std::cout << "  " << question << ' ' << dim(default_yes ? "[Y/n]" : "[y/N]") << ' ' << std::flush;
     std::string answer;
     if (!std::getline(std::cin, answer)) return false;
-    answer = trim(answer);
-    for (auto& character : answer) character = static_cast<char>(std::tolower(character));
-    return answer.empty() || answer == "y" || answer == "yes";
+    answer = lowercase(trim(answer));
+    if (answer.empty()) return default_yes;
+    return answer == "y" || answer == "yes";
 }
 
 int perform_update(const std::string& tag) {
-    const std::string base = std::string(kRepoUrl) + "/releases/latest/download/";
+    const std::string base = std::string(kRepoUrl) + "/releases/download/" + tag + "/";
     const std::string directory = temp_dir();
     const std::string installer = directory + "\\kite-setup.exe";
     const std::string checksum = directory + "\\kite-setup.exe.sha256";
@@ -227,7 +258,7 @@ int perform_update(const std::string& tag) {
     if (checksum_file) {
         std::string expected;
         checksum_file >> expected;
-        for (auto& character : expected) character = static_cast<char>(std::tolower(character));
+        expected = lowercase(expected);
         if (!expected.empty() && expected != file_sha256(installer)) {
             std::cerr << "  " << red(std::string(cross()) + " Checksum mismatch")
                       << " - the download may be corrupt. Aborting.\n";
@@ -246,36 +277,83 @@ int perform_update(const std::string& tag) {
     return 0;
 }
 
-int update_windows(bool check_only, bool force, bool assume_yes) {
+int show_list(const std::string& current_version) {
+    const std::vector<std::string> tags = all_tags();
+    if (tags.empty()) {
+        std::cerr << "  " << red(std::string(cross()) + " Could not reach the release feed.") << '\n';
+        return 1;
+    }
+    std::cout << "\n  " << bold("Releases") << '\n';
+    for (const std::string& tag : tags) {
+        const std::string version = without_v(tag);
+        const bool installed = version == current_version;
+        std::cout << "    " << (installed ? green(version) : version)
+                  << (installed ? dim("   (installed)") : "") << '\n';
+    }
+    std::cout << "\n  " << dim("kite update <version>") << " installs a specific one.\n\n";
+    return 0;
+}
+
+int update_windows(const UpdateOptions& options) {
     enable_console_style();
     std::cout << '\n' << "  " << bold("Kite update") << "\n\n";
 
-    const std::string tag = latest_tag();
+    if (options.list) {
+        return show_list(kVersion);
+    }
+
+    const bool wants_specific = !options.version.empty() && lowercase(options.version) != "latest";
+    std::string tag;
+    if (wants_specific) {
+        const std::vector<std::string> tags = all_tags();
+        if (tags.empty()) {
+            std::cerr << "  " << red(std::string(cross()) + " Could not reach the release feed.") << '\n';
+            return 1;
+        }
+        tag = match_version(options.version, tags);
+        if (tag.empty()) {
+            std::cerr << "  " << red(std::string(cross()) + " No release ") << options.version
+                      << ". Available: ";
+            for (std::size_t index = 0; index < tags.size(); ++index) {
+                std::cerr << (index > 0 ? ", " : "") << without_v(tags[index]);
+            }
+            std::cerr << "\n\n";
+            return 1;
+        }
+    } else {
+        tag = latest_tag();
+    }
+
     if (tag.empty()) {
         std::cerr << "  " << red(std::string(cross()) + " Could not reach the release feed.") << '\n';
         return 1;
     }
 
-    SemVer latest;
+    SemVer target;
     const SemVer current{kVersionMajor, kVersionMinor, kVersionPatch};
-    if (!parse_semver(tag, latest)) {
+    if (!parse_semver(tag, target)) {
         std::cerr << "  " << red(std::string(cross()) + " Unexpected release tag: ") << tag << '\n';
         return 1;
     }
 
-    const bool newer = latest > current;
+    const int direction = compare(target, current);
     const std::string shown = without_v(tag);
     std::cout << "  installed   " << bold(kVersion) << '\n';
-    std::cout << "  latest      " << (newer ? green(shown) : dim(shown)) << '\n';
+    const std::string role = direction > 0 ? green(shown)
+        : direction < 0 ? yellow(shown + "  (older)")
+        : dim(shown);
+    std::cout << "  " << (wants_specific ? "target      " : "latest      ") << role << '\n';
 
-    if (!newer && !force) {
-        std::cout << "\n  " << green(tick()) << ' ' << "You are on the latest version.\n\n";
+    if (direction == 0 && !options.force && !wants_specific) {
+        std::cout << "\n  " << green(tick()) << " You are on the latest version.\n"
+                  << "  " << dim("kite update --force reinstalls it; kite update <version> installs another.")
+                  << "\n\n";
         return 0;
     }
 
     const std::vector<std::string> highlights = release_highlights(tag);
     if (!highlights.empty()) {
-        std::cout << "\n  " << bold("What's new") << '\n';
+        std::cout << "\n  " << bold(direction < 0 ? "In " + shown : "What's new") << '\n';
         for (const std::string& entry : highlights) {
             std::cout << "    " << dim("-") << ' ' << entry << '\n';
         }
@@ -283,14 +361,20 @@ int update_windows(bool check_only, bool force, bool assume_yes) {
     }
     std::cout << '\n';
 
-    if (check_only) {
-        std::cout << "  Run " << cyan("kite update") << " to install it.\n\n";
+    if (options.check) {
+        std::cout << "  Run " << cyan(wants_specific ? "kite update " + shown : "kite update")
+                  << " to install it.\n\n";
         return 0;
     }
 
-    if (!assume_yes && !prompt_yes(newer ? "Install " + shown + " now?" : "Reinstall " + shown + "?")) {
-        std::cout << "  Cancelled.\n\n";
-        return 0;
+    if (!options.yes) {
+        const std::string question = direction > 0 ? "Install " + shown + " now?"
+            : direction < 0 ? "Downgrade from " + std::string(kVersion) + " to " + shown + "?"
+            : "Reinstall " + shown + "?";
+        if (!prompt_yes(question, direction >= 0)) {
+            std::cout << "  Cancelled.\n\n";
+            return 0;
+        }
     }
 
     return perform_update(tag);
@@ -300,13 +384,11 @@ int update_windows(bool check_only, bool force, bool assume_yes) {
 
 } // namespace
 
-int run_update(bool check_only, bool force, bool assume_yes) {
+int run_update(const UpdateOptions& options) {
 #if defined(_WIN32)
-    return update_windows(check_only, force, assume_yes);
+    return update_windows(options);
 #else
-    (void)check_only;
-    (void)force;
-    (void)assume_yes;
+    (void)options;
     std::cerr << "kite update is only available on Windows. Use your package manager elsewhere.\n";
     return 1;
 #endif

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 - 2026-09-09
+
+### Tooling
+
+- `kite update <version>` installs a specific release, including an older one
+  (a downgrade asks for confirmation and defaults to no).
+- `kite update --list` shows every release and marks the installed one.
+- `kite update` on the latest version now points at `--force` and
+  `kite update <version>`.
+
 ## 0.3.0 - 2026-09-09
 
 ### Language

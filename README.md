@@ -30,7 +30,9 @@ kite run your-program.kite
 
 `kite update` shows the installed and latest versions, lists what changed, asks
 before installing, and downloads with a progress bar. `kite update --check`
-reports without installing; `kite update --yes` skips the prompt.
+reports without installing, `kite update --yes` skips the prompt,
+`kite update --list` shows every release, and `kite update <version>` installs a
+specific one (including an older one).
 
 ## The language
 

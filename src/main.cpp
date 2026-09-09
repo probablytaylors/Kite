@@ -27,24 +27,24 @@ int usage() {
         "  kite exec <file.kbc>         Run a compiled bytecode artifact\n"
         "  kite native <file.kite> [-o <out.exe>]\n"
         "                               Compile a typed program to a native executable\n"
-        "  kite update [--check] [--yes] [--force]\n"
-        "                               Install the latest release (Windows)\n"
+        "  kite update [<version>] [--check] [--yes] [--force] [--list]\n"
+        "                               Install a release, or the latest (Windows)\n"
         "  kite --bytecode <file>       Alias for: kite run --bytecode <file>\n"
         "  kite --version               Print the version and exit\n";
     return 2;
 }
 
 int update_command(const std::vector<std::string>& args) {
-    bool check_only = false;
-    bool force = false;
-    bool assume_yes = false;
+    kite::UpdateOptions options;
     for (const auto& arg : args) {
-        if (arg == "--check") check_only = true;
-        else if (arg == "--force") force = true;
-        else if (arg == "--yes" || arg == "-y") assume_yes = true;
+        if (arg == "--check") options.check = true;
+        else if (arg == "--force") options.force = true;
+        else if (arg == "--yes" || arg == "-y") options.yes = true;
+        else if (arg == "--list") options.list = true;
+        else if (!arg.empty() && arg[0] != '-' && options.version.empty()) options.version = arg;
         else return usage();
     }
-    return kite::run_update(check_only, force, assume_yes);
+    return kite::run_update(options);
 }
 
 int print_version() {

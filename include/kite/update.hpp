@@ -1,7 +1,17 @@
 #pragma once
 
+#include <string>
+
 namespace kite {
 
-int run_update(bool check_only, bool force, bool assume_yes);
+struct UpdateOptions {
+    bool check = false;
+    bool force = false;
+    bool yes = false;
+    bool list = false;
+    std::string version;
+};
+
+int run_update(const UpdateOptions& options);
 
 } // namespace kite
