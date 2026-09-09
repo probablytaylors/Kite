@@ -20,6 +20,7 @@ enum class TokenType {
     Try,
     Catch,
     Throw,
+    Import,
     True,
     False,
     Identifier,

@@ -6,10 +6,22 @@ fn quiet(value) {
     return lower(value)
 }
 
-fn join(left, right) {
-    return left + right
-}
-
 fn has_text(value) {
     return len(value) > 0
+}
+
+fn starts_with(value, prefix) {
+    return substring(value, 0, len(prefix)) == prefix
+}
+
+fn ends_with(value, suffix) {
+    return substring(value, len(value) - len(suffix), len(value)) == suffix
+}
+
+fn repeat(value, times) {
+    let out = ""
+    for (i in range(times)) {
+        out = out + value
+    }
+    return out
 }

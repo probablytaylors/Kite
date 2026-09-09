@@ -9,3 +9,28 @@ fn last(values) {
 fn is_empty(values) {
     return len(values) == 0
 }
+
+fn sum(values) {
+    let total = 0
+    for (v in values) {
+        total = total + v
+    }
+    return total
+}
+
+fn reversed(values) {
+    let out = []
+    for (i in range(len(values) - 1, -1, -1)) {
+        append(out, values[i])
+    }
+    return out
+}
+
+fn contains_value(values, needle) {
+    for (v in values) {
+        if (v == needle) {
+            return true
+        }
+    }
+    return false
+}

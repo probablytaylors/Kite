@@ -132,6 +132,17 @@ std::unique_ptr<Statement> Parser::parse_statement() {
     if (current_.type == TokenType::Throw) {
         return parse_throw_statement();
     }
+    if (current_.type == TokenType::Import) {
+        advance();
+        if (current_.type != TokenType::String) {
+            report_error("expected a quoted path after 'import'");
+            return nullptr;
+        }
+        auto statement = std::make_unique<ImportStatement>();
+        statement->path = decode_string_literal(current_.lexeme);
+        advance();
+        return statement;
+    }
     if (current_.type == TokenType::Break) {
         advance();
         return std::make_unique<BreakStatement>();

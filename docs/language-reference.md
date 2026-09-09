@@ -238,20 +238,37 @@ The interpreter provides these numeric functions:
 Math functions accept numeric values. `sqrt` and `log` require non-negative
 inputs. Invalid arguments and domain errors are reported at runtime.
 
-Modules and concurrency APIs are planned but not implemented yet.
+Concurrency APIs are planned but not implemented yet.
+
+## Imports
+
+```kite
+import "std/collections"
+import "./helpers"
+
+print(sum([1, 2, 3]))
+```
+
+`import "path"` parses another file and adds its top-level declarations to the
+program before the rest of the current file runs. The `.kite` extension is
+optional. A path is resolved against the importing file's directory first, then
+against the directories around `kite.exe` -- so `import "std/collections"` finds
+the library that ships next to the executable. Each file is loaded once no
+matter how many times it is imported, and mutual imports are allowed. `import`
+must appear at the top level, not inside a function or block.
 
 ## Standard Library
 
-The `std/` directory contains the first source-level library modules:
+The `std/` directory ships alongside `kite.exe` and holds source-level modules:
 
-- `std/math.kite`
-- `std/strings.kite`
-- `std/collections.kite`
-- `std/io.kite`
+- `std/math.kite` -- `square`, `cube`, `hypotenuse`, `clamp`
+- `std/strings.kite` -- `shout`, `quiet`, `has_text`, `starts_with`,
+  `ends_with`, `repeat`
+- `std/collections.kite` -- `first`, `last`, `is_empty`, `sum`, `reversed`,
+  `contains_value`
+- `std/io.kite` -- `read_text`, `write_text`
 
-They are valid standalone Kite source files and wrap the current built-ins.
-Imports are not implemented yet, so programs must not assume these modules are
-available automatically.
+Each is also a valid standalone program.
 
 The bytecode compiler covers the whole language: literals, variables,
 assignment, arithmetic, comparisons, short-circuit boolean logic, unary

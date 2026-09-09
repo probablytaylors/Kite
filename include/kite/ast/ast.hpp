@@ -32,6 +32,7 @@ enum class NodeKind {
     Continue,
     Try,
     Throw,
+    Import,
     Function
 };
 
@@ -237,6 +238,12 @@ struct ThrowStatement final : Statement {
     ThrowStatement() : Statement(NodeKind::Throw) {}
 
     std::unique_ptr<Expression> value;
+};
+
+struct ImportStatement final : Statement {
+    ImportStatement() : Statement(NodeKind::Import) {}
+
+    std::string path;
 };
 
 struct FunctionStatement final : Statement {

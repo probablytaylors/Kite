@@ -163,6 +163,10 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         analyze_expression(*throw_statement->value);
         return;
     }
+    if (dynamic_cast<const ImportStatement*>(&statement)) {
+        report_error("import is only allowed at the top level");
+        return;
+    }
     if (const auto* function = dynamic_cast<const FunctionStatement*>(&statement)) {
         const bool previous = in_function_;
         const int previous_loop_depth = loop_depth_;

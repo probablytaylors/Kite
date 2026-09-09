@@ -7,6 +7,7 @@
 #include "kite/builtins.hpp"
 #include "kite/interpreter/interpreter.hpp"
 #include "kite/bytecode/bytecode.hpp"
+#include "kite/module/module.hpp"
 #include "kite/native/native.hpp"
 #include "kite/parser/parser.hpp"
 #include "kite/resolver/resolver.hpp"
@@ -48,21 +49,17 @@ int print_version() {
     return 0;
 }
 
-bool read_source(const std::string& path, std::string& source) {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) {
-        std::cerr << "Could not open file: " << path << '\n';
+bool load_source(const std::string& path, kite::Program& program) {
+    std::vector<std::string> errors;
+    if (!kite::load_program(path, program, errors)) {
+        for (const auto& error : errors) std::cerr << error << '\n';
         return false;
     }
-    source.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
     return true;
 }
 
-bool front_end(const std::string& source, kite::Program& program) {
-    kite::Parser parser{kite::Lexer(source)};
-    program = parser.parse_program();
-    if (!parser.errors().empty()) {
-        for (const auto& error : parser.errors()) std::cerr << error << '\n';
+bool front_end(const std::string& path, kite::Program& program) {
+    if (!load_source(path, program)) {
         return false;
     }
     kite::SemanticAnalyzer analyzer;
@@ -94,11 +91,8 @@ int run_chunk(const kite::Chunk& chunk) {
 }
 
 int run_source(const std::string& path, bool use_bytecode) {
-    std::string source;
-    if (!read_source(path, source)) return 1;
-
     kite::Program program;
-    if (!front_end(source, program)) return 1;
+    if (!front_end(path, program)) return 1;
 
     if (use_bytecode) {
         kite::Chunk chunk;
@@ -139,11 +133,8 @@ int build_command(const std::vector<std::string>& args) {
     if (source_path.empty()) return usage();
     if (output_path.empty()) output_path = default_artifact_path(source_path);
 
-    std::string source;
-    if (!read_source(source_path, source)) return 1;
-
     kite::Program program;
-    if (!front_end(source, program)) return 1;
+    if (!front_end(source_path, program)) return 1;
 
     kite::Chunk chunk;
     if (!compile_chunk(program, chunk)) return 1;
@@ -188,15 +179,8 @@ int native_command(const std::vector<std::string>& args) {
     }
     if (source_path.empty()) return usage();
 
-    std::string source;
-    if (!read_source(source_path, source)) return 1;
-
-    kite::Parser parser{kite::Lexer(source)};
-    const kite::Program program = parser.parse_program();
-    if (!parser.errors().empty()) {
-        for (const auto& error : parser.errors()) std::cerr << error << '\n';
-        return 1;
-    }
+    kite::Program program;
+    if (!load_source(source_path, program)) return 1;
 
     std::string error;
     if (emit_only) {

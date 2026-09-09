@@ -12,6 +12,10 @@
 - `try { } catch (err) { }` and `throw value`. Any runtime error (a failed
   built-in, a bad index, division by zero, or a `throw`) is caught as a string.
   Works on the interpreter and the bytecode VM; native mode rejects it.
+- `import "path"` merges another file's top-level declarations. Paths resolve
+  against the importing file and then the directories around `kite.exe` (so
+  `import "std/collections"` finds the bundled library). Imports are loaded
+  once; mutual imports are fine.
 - `#` line comments.
 - Integer division: `int / int` is now integer, matching C/Go/Rust; a float
   operand still gives a float.

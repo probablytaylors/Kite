@@ -155,6 +155,11 @@ String literals process the escapes `\n`, `\t`, `\r`, `\0`, `\\`, and `\"`.
   and unwinds the value and frame stacks to the handler on a fault. The caught
   value is always a string. `break`/`continue`/`return` emit the matching
   `PopHandler`s so they leave a `try` cleanly.
+- `import "path"` is resolved by a loader (`src/module/`) that parses each file
+  once and merges its top-level declarations into one `Program`; the backends
+  never see an `ImportStatement`. Search order: the importing file's directory,
+  then `kite.exe`'s directory and its two parents (so `std/` next to the exe,
+  or `std/` at the repo root in a dev build, both resolve).
 - The bytecode VM now covers the whole language and calls every built-in
   through a `CallNative` instruction; `&&` and `||` short-circuit.
 - Optional `: type` / `-> type` annotations; only `kite native` enforces them.

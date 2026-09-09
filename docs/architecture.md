@@ -3,7 +3,7 @@
 A Kite program goes through these stages:
 
 ```
-source -> lexer -> parser -> semantic analysis -> resolver -> interpreter | bytecode VM | native
+source -> lexer -> parser -> module loader -> semantic analysis -> resolver -> interpreter | bytecode VM | native
 ```
 
 The **lexer** (`src/lexer/`) turns source text into a flat token stream. The
@@ -12,6 +12,11 @@ expressions; it produces an AST of `Statement` and `Expression` nodes defined
 in `include/kite/ast/ast.hpp`. Every node carries a `NodeKind` tag and the rest
 of the pipeline dispatches on it with a `switch` and `static_cast`. `for x in`
 is desugared here into a C-style `for` over a hidden cursor.
+
+The **module loader** (`src/module/`) follows `import "path"` statements,
+parsing each referenced file once and splicing its top-level declarations into
+one `Program` before the rest of the pipeline runs. Paths resolve against the
+importing file and then the directories around the executable.
 
 **Semantic analysis** (`src/semantic/`) walks the AST once and checks the things
 that are cheap to catch early: undefined names, assignment to unknown variables,
@@ -44,5 +49,5 @@ back with `kite exec`. `load_bytecode` runs `validate_chunk` first, which
 confirms every constant-pool index and jump target is in range, so a truncated
 or tampered file is rejected instead of crashing the VM.
 
-Planned but not built: a module/import system, user-defined types, and widening
-the native compiler to strings and collections.
+Planned but not built: user-defined types, and widening the native compiler to
+strings and collections.

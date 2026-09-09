@@ -65,6 +65,9 @@ Built-ins: `print`, `len`, `type_of`, `str`/`int`/`float`, `range`, `upper`,
 `pow`, trig, `floor`, `min`, `max`, and so on). The `std/` directory has a few
 more helpers written in Kite itself.
 
+`import "std/collections"` (or your own file) merges another file's top-level
+functions; the `std/` modules ship next to `kite.exe`.
+
 See [docs/language-reference.md](docs/language-reference.md) for the full
 picture, [docs/native.md](docs/native.md) for the native compiler, and
 [docs/architecture.md](docs/architecture.md) for how the pieces fit together.
@@ -108,7 +111,8 @@ iscc installer\kite.iss
 ## Layout
 
 ```
-src/  include/kite/   lexer, parser, semantic pass, interpreter, bytecode VM
+src/  include/kite/   lexer, parser, semantic pass, resolver, module loader,
+                      interpreter, bytecode VM, native compiler
 std/                   standard library, written in Kite
 installer/             Inno Setup script and icon
 docs/                  architecture and language notes
@@ -116,12 +120,13 @@ docs/                  architecture and language notes
 
 ## Roadmap
 
-Done: the front end and semantic pass, the interpreter, the bytecode compiler
-and VM (the full dynamic language, including function call frames), `.kbc`
-artifacts, native compilation of a typed subset, and the Windows installer.
+Done: the front end, semantic pass and resolver, the interpreter, the bytecode
+compiler and VM (the full dynamic language, including function call frames),
+`.kbc` artifacts, native compilation of a typed subset, an import system, and
+the Windows installer.
 
-Next: an import system, user-defined types, and widening the native compiler to
-cover strings and collections.
+Next: user-defined types, and widening the native compiler to cover strings and
+collections.
 
 ## License
 
