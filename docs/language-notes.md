@@ -160,6 +160,9 @@ String literals process the escapes `\n`, `\t`, `\r`, `\0`, `\\`, and `\"`.
   never see an `ImportStatement`. Search order: the importing file's directory,
   then `kite.exe`'s directory and its two parents (so `std/` next to the exe,
   or `std/` at the repo root in a dev build, both resolve).
+- `.` field access: the parser rewrites `x.field` to `x["field"]` in
+  `parse_postfix`, so reads, assignment, and chaining all work through the
+  existing index paths.
 - The bytecode VM now covers the whole language and calls every built-in
   through a `CallNative` instruction; `&&` and `||` short-circuit.
 - Optional `: type` / `-> type` annotations; only `kite native` enforces them.

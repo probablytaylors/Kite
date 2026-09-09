@@ -556,12 +556,14 @@ bool BytecodeVm::run(const Chunk& chunk) {
                 }
                 stack_.push_back(Value::string(std::string(1, text[static_cast<std::size_t>(index.as_int())])));
             } else if (target.is_map()) {
+                if (!index.is_string()) { report_error("map index requires a string key"); goto fault; }
                 const auto& entries = target.as_map();
-                if (!index.is_string() || !entries.contains(index.as_string())) {
-                    report_error("map key not found");
+                const auto entry = entries.find(index.as_string());
+                if (entry == entries.end()) {
+                    report_error("map key not found: " + index.as_string());
                     goto fault;
                 }
-                stack_.push_back(entries.at(index.as_string()));
+                stack_.push_back(entry->second);
             } else {
                 report_error("index target must be an array or map");
                 goto fault;

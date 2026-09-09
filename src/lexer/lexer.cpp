@@ -251,6 +251,8 @@ Token Lexer::next_token() {
         return make_token(TokenType::RightParen, start, line, column);
     case ',':
         return make_token(TokenType::Comma, start, line, column);
+    case '.':
+        return make_token(TokenType::Dot, start, line, column);
     default:
         return make_token(TokenType::Invalid, start, line, column);
     }

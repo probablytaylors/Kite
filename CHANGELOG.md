@@ -16,6 +16,7 @@
   against the importing file and then the directories around `kite.exe` (so
   `import "std/collections"` finds the bundled library). Imports are loaded
   once; mutual imports are fine.
+- `map.field` as shorthand for `map["field"]`, reading and assigning.
 - `#` line comments.
 - Integer division: `int / int` is now integer, matching C/Go/Rust; a float
   operand still gives a float.
@@ -49,6 +50,8 @@
   current-directory executable lookup (`NoDefaultCurrentDirectoryInExePath`);
   the script is now run by absolute path and pins its working directory.
 - The semantic analyzer rejected `m[k]` when `k` had an unknown type.
+- The VM's "map key not found" error now names the key and reports a
+  non-string key separately, matching the interpreter.
 
 ## 0.2.0 - 2026-09-09
 

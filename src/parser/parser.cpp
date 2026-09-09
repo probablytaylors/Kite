@@ -737,12 +737,27 @@ std::unique_ptr<Expression> Parser::parse_primary() {
 }
 
 std::unique_ptr<Expression> Parser::parse_postfix(std::unique_ptr<Expression> expression) {
-    while (current_.type == TokenType::LeftParen || current_.type == TokenType::LeftBracket) {
+    while (current_.type == TokenType::LeftParen || current_.type == TokenType::LeftBracket ||
+        current_.type == TokenType::Dot) {
         if (current_.type == TokenType::LeftParen) {
             expression = parse_call(std::move(expression));
             if (!expression) {
                 return nullptr;
             }
+            continue;
+        }
+
+        if (current_.type == TokenType::Dot) {
+            advance();
+            if (current_.type != TokenType::Identifier) {
+                report_error("expected a field name after '.'");
+                return nullptr;
+            }
+            auto field = std::make_unique<IndexExpression>();
+            field->target = std::move(expression);
+            field->index = std::make_unique<StringExpression>(current_.lexeme);
+            advance();
+            expression = std::move(field);
             continue;
         }
 

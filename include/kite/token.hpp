@@ -48,6 +48,7 @@ enum class TokenType {
     Slash,
     Percent,
     Arrow,
+    Dot,
     LeftParen,
     RightParen,
     LeftBrace,

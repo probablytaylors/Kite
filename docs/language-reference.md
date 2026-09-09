@@ -100,10 +100,12 @@ values[1] = 25
 ```kite
 let user = {"name": "Kite", "version": 1}
 print(user["name"])
-user["version"] = 2
+print(user.name)
+user.version = 2
 ```
 
-Map keys must be strings. Assigning a key that does not exist adds it. Reading a
+Map keys must be strings. `m.field` is shorthand for `m["field"]` for both
+reading and assignment. Assigning a key that does not exist adds it. Reading a
 missing key or using a non-string key is a runtime error.
 
 ## Strings
