@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(Kite VERSION 0.3.1 LANGUAGES CXX)
+project(Kite VERSION 0.3.2 LANGUAGES CXX)
 
 option(KITE_WERROR "Treat compiler warnings as errors" OFF)
 

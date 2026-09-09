@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.2 - 2026-09-09
+
+### Security
+
+- **The bytecode VM did not bounds-check local-slot access.** A hand-crafted
+  `.kbc` file run through `kite exec` could make `LoadLocal` / `StoreLocal` /
+  `IncLocal` / `DecLocal` / `ReturnLocal` read or write memory outside the
+  value stack, which is exploitable for corruption. Every slot access is now
+  checked.
+- **`MakeStruct` trusted the stack contents.** A crafted `.kbc` could pass a
+  non-string where a field name or the type name was expected, causing a type
+  confusion. It now verifies them.
+- Count operands on `MakeMap` / `MakeStruct` / `CallNative` could overflow
+  `size_t` and slip past the stack-depth check; the bytecode verifier now
+  bounds them and the runtime checks no longer multiply.
+- `load_bytecode` sized its tables from the file's own claimed counts before
+  reading; it now also checks them against the file size, so a tiny file can't
+  force a large allocation.
+- `INT64_MIN / -1` and `INT64_MIN % -1` are undefined in C++ and crashed the
+  process (interpreter, VM, and native). They now return the wrapped result.
+- The parser had no recursion limit, so deeply nested input
+  (`((((...`, `----...`, nested blocks) overflowed the stack. It now stops at
+  a fixed depth.
+- `kite native` escaped only a few characters in string literals; it now
+  octal-escapes everything outside plain ASCII (and `?`, to defeat trigraphs),
+  guards non-finite float literals, and routes integer `/` and `%` through
+  helpers that can't trigger `INT64_MIN / -1`.
+- The module loader now caps import depth and file count.
+- `kite update` validates release tags before using them in a command, aborts
+  if it can't fetch the checksum (rather than proceeding unverified), and
+  flags releases whose changelog mentions security fixes.
+
+Added `SECURITY.md` with a disclosure policy and the threat model.
+
 ## 0.3.1 - 2026-09-09
 
 ### Tooling

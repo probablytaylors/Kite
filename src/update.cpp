@@ -107,6 +107,7 @@ std::string temp_dir() {
     if (length == 0 || length > MAX_PATH) return ".";
     std::string path(buffer, length);
     while (!path.empty() && (path.back() == '\\' || path.back() == '/')) path.pop_back();
+    if (path.find_first_of("\"|&<>^") != std::string::npos) return ".";
     return path;
 }
 
@@ -143,6 +144,17 @@ int compare(const SemVer& a, const SemVer& b) {
     return 0;
 }
 
+bool is_safe_tag(const std::string& tag) {
+    if (tag.empty() || tag.size() > 32) return false;
+    for (char character : tag) {
+        if (!std::isalnum(static_cast<unsigned char>(character)) && character != '.' &&
+            character != '-' && character != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
 std::vector<std::string> parse_release_tags(const std::string& feed) {
     std::vector<std::string> tags;
     const std::string marker = "/releases/tag/";
@@ -152,7 +164,9 @@ std::vector<std::string> parse_release_tags(const std::string& feed) {
         const std::size_t end = feed.find_first_of("\"'< \r\n", position);
         if (end == std::string::npos) break;
         std::string tag = feed.substr(position, end - position);
-        if (!tag.empty() && std::find(tags.begin(), tags.end(), tag) == tags.end()) tags.push_back(tag);
+        if (is_safe_tag(tag) && std::find(tags.begin(), tags.end(), tag) == tags.end()) {
+            tags.push_back(tag);
+        }
         position = end;
     }
     return tags;
@@ -163,7 +177,8 @@ std::string latest_tag() {
         "curl -s -L -o NUL -w \"%{url_effective}\" " + std::string(kRepoUrl) + "/releases/latest"));
     const std::size_t marker = effective.find("/tag/");
     if (marker == std::string::npos) return "";
-    return effective.substr(marker + 5);
+    const std::string tag = effective.substr(marker + 5);
+    return is_safe_tag(tag) ? tag : "";
 }
 
 std::vector<std::string> all_tags() {
@@ -179,7 +194,12 @@ std::string match_version(const std::string& spec, const std::vector<std::string
     return "";
 }
 
-std::vector<std::string> release_highlights(const std::string& tag) {
+struct ReleaseNotes {
+    std::vector<std::string> highlights;
+    bool security = false;
+};
+
+ReleaseNotes release_notes(const std::string& tag) {
     const std::string text = run_capture(
         "curl -s -L -f " + std::string(kRawUrl) + "/" + tag + "/CHANGELOG.md");
     std::vector<std::string> lines;
@@ -190,15 +210,20 @@ std::vector<std::string> release_highlights(const std::string& tag) {
     }
     if (!current.empty()) lines.push_back(current);
 
-    std::vector<std::string> highlights;
+    ReleaseNotes notes;
     std::string pending;
     const auto flush = [&] {
         std::string entry = trim(pending);
         pending.clear();
-        if (entry.empty() || highlights.size() >= 6) return;
+        if (entry.empty()) return;
+        const std::string low = lowercase(entry);
+        if (low.find("security") != std::string::npos || low.find("cve-") != std::string::npos) {
+            notes.security = true;
+        }
+        if (notes.highlights.size() >= 6) return;
         entry.erase(std::remove(entry.begin(), entry.end(), '`'), entry.end());
         if (entry.size() > 108) entry = entry.substr(0, 105) + "...";
-        highlights.push_back(entry);
+        notes.highlights.push_back(entry);
     };
 
     bool inside = false;
@@ -212,12 +237,14 @@ std::vector<std::string> release_highlights(const std::string& tag) {
         if (!inside) continue;
         const std::string entry = trim(line);
         if (entry.rfind("- ", 0) == 0) { flush(); pending = entry.substr(2); }
-        else if (entry.empty() || entry.rfind("### ", 0) == 0) flush();
+        else if (entry.empty() || entry.rfind("### ", 0) == 0) {
+            if (lowercase(entry).find("security") != std::string::npos) notes.security = true;
+            flush();
+        }
         else if (!pending.empty()) pending += ' ' + entry;
-        if (highlights.size() >= 6) break;
     }
     flush();
-    return highlights;
+    return notes;
 }
 
 std::string file_sha256(const std::string& path) {
@@ -255,19 +282,24 @@ int perform_update(const std::string& tag) {
 
     std::system(("curl -sL -f -o \"" + checksum + "\" " + base + "kite-setup.exe.sha256").c_str());
     std::ifstream checksum_file(checksum);
+    std::string expected;
     if (checksum_file) {
-        std::string expected;
         checksum_file >> expected;
         expected = lowercase(expected);
-        if (!expected.empty() && expected != file_sha256(installer)) {
-            std::cerr << "  " << red(std::string(cross()) + " Checksum mismatch")
-                      << " - the download may be corrupt. Aborting.\n";
-            return 1;
-        }
-        std::cout << "  " << green(tick()) << " Checksum verified\n";
-    } else {
-        std::cout << "  " << yellow(warn_mark()) << " No published checksum for this release\n";
     }
+    if (expected.size() != 64) {
+        std::cerr << "  " << red(std::string(cross()) + " Could not fetch the checksum for this download.")
+                  << " Aborting.\n"
+                  << "  " << dim("Download the installer yourself from " + std::string(kRepoUrl) + "/releases")
+                  << "\n\n";
+        return 1;
+    }
+    if (expected != file_sha256(installer)) {
+        std::cerr << "  " << red(std::string(cross()) + " Checksum mismatch")
+                  << " - the download does not match what was published. Aborting.\n\n";
+        return 1;
+    }
+    std::cout << "  " << green(tick()) << " Checksum verified\n";
 
     std::cout << "  " << cyan(std::string(arrow()) + " Launching the installer") << " ...\n";
     std::system(("cmd /c start \"\" \"" + installer +
@@ -351,10 +383,14 @@ int update_windows(const UpdateOptions& options) {
         return 0;
     }
 
-    const std::vector<std::string> highlights = release_highlights(tag);
-    if (!highlights.empty()) {
+    const ReleaseNotes notes = release_notes(tag);
+    if (notes.security && direction > 0) {
+        std::cout << "\n  " << red(std::string(warn_mark()) + " This release contains security fixes.")
+                  << ' ' << bold("Updating is recommended.") << '\n';
+    }
+    if (!notes.highlights.empty()) {
         std::cout << "\n  " << bold(direction < 0 ? "In " + shown : "What's new") << '\n';
-        for (const std::string& entry : highlights) {
+        for (const std::string& entry : notes.highlights) {
             std::cout << "    " << dim("-") << ' ' << entry << '\n';
         }
         std::cout << "  " << dim(std::string(kRepoUrl) + "/blob/" + tag + "/CHANGELOG.md") << '\n';

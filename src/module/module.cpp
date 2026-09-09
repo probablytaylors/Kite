@@ -50,11 +50,19 @@ class Loader {
 public:
     std::vector<std::string> errors;
 
-    bool load(const fs::path& path, Program& program) {
+    bool load(const fs::path& path, Program& program, int depth = 0) {
+        if (depth > 64) {
+            errors.push_back("import chain is too deep");
+            return false;
+        }
         std::error_code error;
         const fs::path resolved = fs::weakly_canonical(path, error);
         const fs::path file = error ? path : resolved;
         if (!loaded_.insert(file.string()).second) return true;
+        if (loaded_.size() > 4096) {
+            errors.push_back("too many imported files");
+            return false;
+        }
 
         std::string source;
         if (!read_file_text(file, source)) {
@@ -81,7 +89,7 @@ public:
                     file.filename().string());
                 continue;
             }
-            load(target, program);
+            load(target, program, depth + 1);
         }
         for (auto& statement : parsed.statements) {
             if (statement->kind != NodeKind::Import) program.statements.push_back(std::move(statement));

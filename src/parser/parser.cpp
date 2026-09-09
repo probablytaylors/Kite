@@ -70,7 +70,7 @@ Parser::Parser(Lexer lexer)
 Program Parser::parse_program() {
     Program program;
 
-    while (current_.type != TokenType::Eof) {
+    while (current_.type != TokenType::Eof && !fatal_) {
         if (current_.type == TokenType::Invalid) {
             report_error("invalid token");
             advance();
@@ -113,6 +113,11 @@ bool Parser::expect(TokenType type, const std::string& message) {
 }
 
 std::unique_ptr<Statement> Parser::parse_statement() {
+    Nest nest(*this);
+    if (nest.too_deep()) {
+        report_error("nesting is too deep");
+        return nullptr;
+    }
     if (current_.type == TokenType::Let) {
         return parse_let_statement();
     }
@@ -581,6 +586,11 @@ std::unique_ptr<Statement> Parser::parse_assignment_or_expression_statement() {
 }
 
 std::unique_ptr<Expression> Parser::parse_expression() {
+    Nest nest(*this);
+    if (nest.too_deep()) {
+        report_error("expression nesting is too deep");
+        return nullptr;
+    }
     return parse_logical_or();
 }
 
@@ -726,6 +736,11 @@ std::unique_ptr<Expression> Parser::parse_multiplicative() {
 }
 
 std::unique_ptr<Expression> Parser::parse_unary() {
+    Nest nest(*this);
+    if (nest.too_deep()) {
+        report_error("expression nesting is too deep");
+        return nullptr;
+    }
     if (current_.type == TokenType::Minus || current_.type == TokenType::Bang) {
         const UnaryOperator operator_type = current_.type == TokenType::Minus
             ? UnaryOperator::Negate
@@ -904,7 +919,7 @@ std::unique_ptr<Expression> Parser::parse_map() {
 
 std::vector<std::unique_ptr<Statement>> Parser::parse_block() {
     std::vector<std::unique_ptr<Statement>> statements;
-    while (current_.type != TokenType::RightBrace && current_.type != TokenType::Eof) {
+    while (current_.type != TokenType::RightBrace && current_.type != TokenType::Eof && !fatal_) {
         if (auto statement = parse_statement()) {
             statements.push_back(std::move(statement));
         } else if (current_.type != TokenType::Eof && current_.type != TokenType::RightBrace) {

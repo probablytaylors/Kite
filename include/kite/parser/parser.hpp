@@ -16,6 +16,16 @@ public:
     const std::vector<std::string>& errors() const;
 
 private:
+    struct Nest {
+        explicit Nest(Parser& parser) : parser_(parser) { ++parser_.depth_; }
+        ~Nest() { --parser_.depth_; }
+        bool too_deep() const {
+            if (parser_.depth_ > 500) parser_.fatal_ = true;
+            return parser_.fatal_;
+        }
+        Parser& parser_;
+    };
+
     void advance();
     void report_error(const std::string& message);
     bool expect(TokenType type, const std::string& message);
@@ -50,6 +60,8 @@ private:
     Token current_;
     Token peek_;
     int synthetic_ = 0;
+    int depth_ = 0;
+    bool fatal_ = false;
     std::vector<std::string> errors_;
 };
 

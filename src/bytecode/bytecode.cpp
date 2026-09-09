@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -369,17 +370,26 @@ bool BytecodeVm::run(const Chunk& chunk) {
             stack_.push_back(chunk.constants[instruction.operand]);
             break;
         case OpCode::LoadLocal: {
+            if (base_ + instruction.operand >= stack_.size()) {
+                report_error("local slot out of range"); goto fault;
+            }
             Value local = stack_[base_ + instruction.operand];
             stack_.push_back(std::move(local));
             break;
         }
         case OpCode::StoreLocal:
             if (stack_.empty()) { report_error("stack underflow on store"); goto fault; }
+            if (base_ + instruction.operand >= stack_.size()) {
+                report_error("local slot out of range"); goto fault;
+            }
             stack_[base_ + instruction.operand] = std::move(stack_.back());
             stack_.pop_back();
             break;
         case OpCode::IncLocal:
         case OpCode::DecLocal: {
+            if (base_ + instruction.operand >= stack_.size()) {
+                report_error("local slot out of range"); goto fault;
+            }
             Value& slot = stack_[base_ + instruction.operand];
             const std::int64_t delta = instruction.opcode == OpCode::IncLocal ? 1 : -1;
             if (slot.is_int()) slot = slot.as_int() + delta;
@@ -404,7 +414,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
         }
         case OpCode::CallNative: {
             const std::size_t count = instruction.operand;
-            if (stack_.size() < count + 1) { report_error("stack underflow on builtin call"); goto fault; }
+            if (count >= stack_.size()) { report_error("stack underflow on builtin call"); goto fault; }
             std::vector<Value> arguments;
             arguments.reserve(count);
             const std::size_t first = stack_.size() - count;
@@ -434,6 +444,9 @@ bool BytecodeVm::run(const Chunk& chunk) {
             if (frames_.empty()) { report_error("return outside function"); goto fault; }
             Value result;
             if (instruction.opcode == OpCode::ReturnLocal) {
+                if (base_ + instruction.operand >= stack_.size()) {
+                    report_error("local slot out of range"); goto fault;
+                }
                 result = stack_[base_ + instruction.operand];
             } else if (instruction.opcode == OpCode::ReturnConst) {
                 result = chunk.constants[instruction.operand];
@@ -493,10 +506,12 @@ bool BytecodeVm::run(const Chunk& chunk) {
             if (stack_.empty()) { report_error("stack underflow on pop"); goto fault; }
             stack_.pop_back();
             break;
-        case OpCode::Dup:
+        case OpCode::Dup: {
             if (stack_.empty()) { report_error("stack underflow on dup"); goto fault; }
-            stack_.push_back(stack_[stack_.size() - 1]);
+            Value top = stack_.back();
+            stack_.push_back(std::move(top));
             break;
+        }
         case OpCode::Jump:
             instruction_pointer = instruction.operand - 1;
             break;
@@ -527,7 +542,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
             break;
         }
         case OpCode::MakeMap: {
-            if (stack_.size() < instruction.operand * 2) { report_error("stack underflow on map construction"); goto fault; }
+            if (instruction.operand > stack_.size() / 2) { report_error("stack underflow on map construction"); goto fault; }
             Value map = Value::map();
             auto& entries = map.as_map();
             for (std::size_t index = 0; index < instruction.operand; ++index) {
@@ -540,16 +555,21 @@ bool BytecodeVm::run(const Chunk& chunk) {
             break;
         }
         case OpCode::MakeStruct: {
-            if (stack_.size() < instruction.operand * 2 + 1) {
+            if (stack_.empty() || instruction.operand > (stack_.size() - 1) / 2) {
                 report_error("stack underflow on struct construction");
                 goto fault;
             }
             Value structure = Value::map();
             auto& entries = structure.as_map();
+            bool bad_key = false;
             for (std::size_t index = 0; index < instruction.operand; ++index) {
                 Value value = std::move(stack_.back()); stack_.pop_back();
                 Value key = std::move(stack_.back()); stack_.pop_back();
+                if (!key.is_string()) { bad_key = true; break; }
                 entries[key.as_string()] = std::move(value);
+            }
+            if (bad_key || !stack_.back().is_string()) {
+                report_error("malformed struct instruction"); goto fault;
             }
             structure.map_type() = std::move(stack_.back().as_string());
             stack_.pop_back();
@@ -715,6 +735,11 @@ bool BytecodeVm::binary_operation(OpCode opcode) {
     if (left.is_int() && right.is_int()) {
         const std::int64_t a = left.as_int();
         const std::int64_t b = right.as_int();
+        if ((opcode == OpCode::Divide || opcode == OpCode::Modulo) &&
+            b == -1 && a == std::numeric_limits<std::int64_t>::min()) {
+            stack_.push_back(opcode == OpCode::Modulo ? std::int64_t{0} : a);
+            return true;
+        }
         switch (opcode) {
         case OpCode::Add: stack_.push_back(a + b); break;
         case OpCode::Subtract: stack_.push_back(a - b); break;
@@ -878,7 +903,12 @@ bool validate_chunk(const Chunk& chunk, std::string& error) {
                 error = "frame slot out of range at instruction " + std::to_string(index);
                 return false;
             }
-        } else if (!operand_is_count(instruction.opcode) && instruction.operand != 0) {
+        } else if (operand_is_count(instruction.opcode)) {
+            if (instruction.operand > chunk.code.size()) {
+                error = "operand count out of range at instruction " + std::to_string(index);
+                return false;
+            }
+        } else if (instruction.operand != 0) {
             error = "unexpected non-zero operand at instruction " + std::to_string(index);
             return false;
         }
@@ -926,8 +956,11 @@ bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& err
 }
 
 bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
-    std::ifstream input(path, std::ios::binary);
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input) { error = "could not open bytecode file: " + path; return false; }
+    const std::streamoff file_size = input.tellg();
+    input.seekg(0, std::ios::beg);
+    const std::uint64_t remaining = file_size > 0 ? static_cast<std::uint64_t>(file_size) : 0;
 
     char magic[sizeof(kBytecodeMagic)]{};
     if (!input.read(magic, sizeof(magic)) ||
@@ -944,7 +977,7 @@ bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
     }
 
     std::uint64_t constants = 0;
-    if (!read_binary(input, constants) || constants > kMaxConstants) {
+    if (!read_binary(input, constants) || constants > kMaxConstants || constants * 2 > remaining) {
         error = "invalid bytecode constant table";
         return false;
     }
@@ -955,7 +988,8 @@ bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
     }
 
     std::uint64_t instructions = 0;
-    if (!read_binary(input, instructions) || instructions > kMaxInstructions) {
+    if (!read_binary(input, instructions) || instructions > kMaxInstructions ||
+        instructions * 9 > remaining) {
         error = "invalid bytecode instruction stream";
         return false;
     }
@@ -971,7 +1005,7 @@ bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
     }
 
     std::uint64_t functions = 0;
-    if (!read_binary(input, functions) || functions > kMaxFunctions) {
+    if (!read_binary(input, functions) || functions > kMaxFunctions || functions * 16 > remaining) {
         error = "invalid bytecode function table";
         return false;
     }

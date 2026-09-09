@@ -1,6 +1,7 @@
 #include "kite/interpreter/interpreter.hpp"
 
 #include <cmath>
+#include <limits>
 #include <utility>
 
 #include "kite/builtins.hpp"
@@ -409,6 +410,12 @@ bool Interpreter::evaluate_binary(const BinaryExpression& binary, Value& value) 
     if (both_integer) {
         const std::int64_t a = left.as_int();
         const std::int64_t b = right.as_int();
+        if ((binary.operator_type == BinaryOperator::Divide ||
+             binary.operator_type == BinaryOperator::Modulo) &&
+            b == -1 && a == std::numeric_limits<std::int64_t>::min()) {
+            value = binary.operator_type == BinaryOperator::Modulo ? std::int64_t{0} : a;
+            return true;
+        }
         switch (binary.operator_type) {
         case BinaryOperator::Add: value = a + b; break;
         case BinaryOperator::Subtract: value = a - b; break;

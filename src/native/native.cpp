@@ -1,5 +1,6 @@
 #include "kite/native/native.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -62,7 +63,14 @@ public:
         }
 
         std::ostringstream source;
-        source << "#include <stdint.h>\n#include <stdio.h>\n\n";
+        source << "#include <stdint.h>\n#include <stdio.h>\n\n"
+               << "static int64_t kite_idiv(int64_t a, int64_t b) {\n"
+               << "    if (b == 0) return 0;\n"
+               << "    if (b == -1 && a == INT64_MIN) return a;\n"
+               << "    return a / b;\n}\n"
+               << "static int64_t kite_imod(int64_t a, int64_t b) {\n"
+               << "    if (b == 0 || b == -1) return 0;\n"
+               << "    return a % b;\n}\n\n";
         for (const auto& statement : program.statements) {
             if (statement->kind != NodeKind::Function) continue;
             const auto& function = static_cast<const FunctionStatement&>(*statement);
@@ -303,6 +311,11 @@ private:
         return type;
     }
 
+    Type lookup(const Expression& expression) const {
+        const auto found = types_.find(&expression);
+        return found == types_.end() ? Type::Error : found->second;
+    }
+
     void emit_parameters(std::ostream& out, const FunctionStatement& function) {
         if (function.parameters.empty()) {
             out << "void";
@@ -462,9 +475,11 @@ private:
             out << "INT64_C(" << static_cast<const IntegerExpression&>(expression).value << ")";
             return;
         case NodeKind::Float: {
+            const double value = static_cast<const FloatExpression&>(expression).value;
+            if (!std::isfinite(value)) { out << "(0.0)"; return; }
             std::ostringstream number;
             number.precision(17);
-            number << static_cast<const FloatExpression&>(expression).value;
+            number << value;
             std::string text = number.str();
             if (text.find('.') == std::string::npos && text.find('e') == std::string::npos) text += ".0";
             out << text;
@@ -485,6 +500,23 @@ private:
         }
         case NodeKind::Binary: {
             const auto& binary = static_cast<const BinaryExpression&>(expression);
+            const bool int_result = lookup(*binary.left) == Type::Int && lookup(*binary.right) == Type::Int;
+            if (int_result && binary.operator_type == BinaryOperator::Divide) {
+                out << "kite_idiv(";
+                emit_expression(out, *binary.left);
+                out << ", ";
+                emit_expression(out, *binary.right);
+                out << ')';
+                return;
+            }
+            if (int_result && binary.operator_type == BinaryOperator::Modulo) {
+                out << "kite_imod(";
+                emit_expression(out, *binary.left);
+                out << ", ";
+                emit_expression(out, *binary.right);
+                out << ')';
+                return;
+            }
             out << '(';
             emit_expression(out, *binary.left);
             out << ' ' << binary_operator(binary.operator_type) << ' ';
@@ -547,14 +579,14 @@ private:
 
     static void emit_string_literal(std::ostream& out, const std::string& value) {
         out << '"';
-        for (char character : value) {
-            switch (character) {
-            case '"': out << "\\\""; break;
-            case '\\': out << "\\\\"; break;
-            case '\n': out << "\\n"; break;
-            case '\t': out << "\\t"; break;
-            case '\r': out << "\\r"; break;
-            default: out << character; break;
+        for (unsigned char character : value) {
+            if (character == '"' || character == '\\' || character == '?' ||
+                character < 0x20 || character >= 0x7f) {
+                out << '\\' << static_cast<char>('0' + ((character >> 6) & 7))
+                    << static_cast<char>('0' + ((character >> 3) & 7))
+                    << static_cast<char>('0' + (character & 7));
+            } else {
+                out << static_cast<char>(character);
             }
         }
         out << '"';
