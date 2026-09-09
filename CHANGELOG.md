@@ -17,6 +17,11 @@
   `import "std/collections"` finds the bundled library). Imports are loaded
   once; mutual imports are fine.
 - `map.field` as shorthand for `map["field"]`, reading and assigning.
+- `struct Name { field, ... }` declares a record type; `Name { field: value, ... }`
+  builds one. Fields are read and assigned with `.`, `type_of` reports the
+  struct name, and the semantic pass checks that a literal names every field
+  exactly once. Struct names must start with an uppercase letter. Interpreter
+  and VM only (`.kbc` format 13, `MakeStruct`); native mode rejects them.
 - `#` line comments.
 - Integer division: `int / int` is now integer, matching C/Go/Rust; a float
   operand still gives a float.

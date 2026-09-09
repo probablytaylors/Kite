@@ -33,21 +33,25 @@ kite run your-program.kite
 
 ## The language
 
-Variables with `let`, functions with `fn`, C-style control flow:
+Variables with `let`, functions with `fn`, records with `struct`, C-style
+control flow:
 
 ```
-let name = "Kite"
-let scores = [82, 91, 74]
-let total = 0
+struct Student { name, scores }
 
-for (let i = 0; i < len(scores); i += 1) {
-    total += scores[i]
+fn average(s) {
+    let total = 0
+    for (score in s.scores) {
+        total += score
+    }
+    return total / len(s.scores)
 }
 
-if (total / len(scores) >= 80) {
-    print(name + ": pass")
+let s = Student { name: "Kite", scores: [82, 91, 74] }
+if (average(s) >= 80) {
+    print(s.name + ": pass")
 } else {
-    print(name + ": retake")
+    print(s.name + ": retake")
 }
 ```
 
@@ -121,12 +125,11 @@ docs/                  architecture and language notes
 ## Roadmap
 
 Done: the front end, semantic pass and resolver, the interpreter, the bytecode
-compiler and VM (the full dynamic language, including function call frames),
-`.kbc` artifacts, native compilation of a typed subset, an import system, and
-the Windows installer.
+compiler and VM (the full dynamic language, including function call frames and
+structs), `.kbc` artifacts, native compilation of a typed subset, an import
+system, and the Windows installer.
 
-Next: user-defined types, and widening the native compiler to cover strings and
-collections.
+Next: widening the native compiler to cover strings, collections, and structs.
 
 ## License
 

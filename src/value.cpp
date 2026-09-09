@@ -33,7 +33,7 @@ const char* type_name(const Value& value) {
     case ValueType::Float: return "float";
     case ValueType::String: return "string";
     case ValueType::Array: return "array";
-    case ValueType::Map: return "map";
+    case ValueType::Map: return value.map_type().empty() ? "map" : value.map_type().c_str();
     }
     return "nil";
 }
@@ -69,11 +69,21 @@ std::string to_string(const Value& value, int depth) {
     }
     case ValueType::Map: {
         if (depth > 64) return "{...}";
+        const bool is_struct = !value.map_type().empty();
         std::ostringstream output;
-        output << '{';
         std::vector<std::string> keys;
         for (const auto& entry : value.as_map()) keys.push_back(entry.first);
         std::sort(keys.begin(), keys.end());
+        if (is_struct) {
+            output << value.map_type() << " {";
+            for (std::size_t index = 0; index < keys.size(); ++index) {
+                output << (index > 0 ? ", " : " ") << keys[index] << ": "
+                       << to_string(value.as_map().at(keys[index]), depth + 1);
+            }
+            output << (keys.empty() ? "}" : " }");
+            return output.str();
+        }
+        output << '{';
         for (std::size_t index = 0; index < keys.size(); ++index) {
             if (index > 0) output << ", ";
             output << '"' << keys[index] << "\": " << to_string(value.as_map().at(keys[index]), depth + 1);

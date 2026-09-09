@@ -230,6 +230,7 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
         return;
     }
     case NodeKind::Function:
+    case NodeKind::Struct:
         return;
     default:
         report_error("bytecode compiler does not support this statement yet");
@@ -259,11 +260,14 @@ void BytecodeCompiler::compile_expression(const Expression& expression) {
     }
     case NodeKind::Map: {
         const auto& map = static_cast<const MapExpression&>(expression);
+        if (!map.type_name.empty()) {
+            emit(OpCode::Constant, add_constant(Value::string(map.type_name)));
+        }
         for (const auto& entry : map.entries) {
             compile_expression(*entry.first);
             compile_expression(*entry.second);
         }
-        emit(OpCode::MakeMap, map.entries.size());
+        emit(map.type_name.empty() ? OpCode::MakeMap : OpCode::MakeStruct, map.entries.size());
         return;
     }
     case NodeKind::Index: {
@@ -535,6 +539,23 @@ bool BytecodeVm::run(const Chunk& chunk) {
             stack_.push_back(std::move(map));
             break;
         }
+        case OpCode::MakeStruct: {
+            if (stack_.size() < instruction.operand * 2 + 1) {
+                report_error("stack underflow on struct construction");
+                goto fault;
+            }
+            Value structure = Value::map();
+            auto& entries = structure.as_map();
+            for (std::size_t index = 0; index < instruction.operand; ++index) {
+                Value value = std::move(stack_.back()); stack_.pop_back();
+                Value key = std::move(stack_.back()); stack_.pop_back();
+                entries[key.as_string()] = std::move(value);
+            }
+            structure.map_type() = std::move(stack_.back().as_string());
+            stack_.pop_back();
+            stack_.push_back(std::move(structure));
+            break;
+        }
         case OpCode::Index: {
             if (stack_.size() < 2) { report_error("stack underflow on index"); goto fault; }
             Value index = std::move(stack_.back()); stack_.pop_back();
@@ -801,7 +822,7 @@ bool operand_is_jump_target(OpCode opcode) {
 
 bool operand_is_count(OpCode opcode) {
     return opcode == OpCode::Print || opcode == OpCode::MakeArray || opcode == OpCode::MakeMap ||
-        opcode == OpCode::CallNative;
+        opcode == OpCode::MakeStruct || opcode == OpCode::CallNative;
 }
 
 bool operand_is_slot(OpCode opcode) {

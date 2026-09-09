@@ -38,6 +38,7 @@ private:
 
     std::vector<std::unordered_map<std::string, SemanticType>> scopes_;
     std::unordered_map<std::string, std::vector<SemanticType>> functions_;
+    std::unordered_map<std::string, std::vector<std::string>> structs_;
     std::vector<std::string> errors_;
     bool in_function_ = false;
     int loop_depth_ = 0;

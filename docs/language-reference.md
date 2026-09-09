@@ -27,6 +27,7 @@ Kite currently supports:
 - Strings: `"Kite"`
 - Arrays: `[1, 2, 3]`
 - Maps: `{"name": "Kite"}`
+- Structs: `Point { x: 1, y: 2 }` (a named map; see Structs)
 
 ## Variables
 
@@ -156,6 +157,27 @@ iteration (running the `for` step). Both are compile-time errors outside a loop.
 Before execution, semantic analysis checks identifiers, assignment targets,
 condition types, collection index types, `return`/`break`/`continue` placement,
 and concrete arithmetic operands.
+
+## Structs
+
+```kite
+struct Point { x, y }
+
+let origin = Point { x: 0, y: 0 }
+let p = Point { x: 3, y: 4 }
+print(p.x)               # 3
+p.y = 10
+print(type_of(p))        # "Point"
+```
+
+`struct Name { field, ... }` names a record type. Its name must start with an
+uppercase letter. `Name { field: value, ... }` builds an instance; the literal
+must give every declared field exactly once (unknown, missing, or duplicate
+fields are compile-time errors). An instance is a map underneath -- `.field`
+reads and assigns, and it can be nested, stored in arrays, and returned from
+functions -- but `type_of` reports the struct name and `print` shows it as
+`Point { x: 3, y: 10 }`. Free functions take structs as ordinary arguments.
+`struct` is top-level only and is not supported by `kite native`.
 
 ## Errors
 

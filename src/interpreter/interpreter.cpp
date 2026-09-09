@@ -198,6 +198,7 @@ bool Interpreter::execute_statement(const Statement& statement) {
     }
 
     case NodeKind::Function:
+    case NodeKind::Struct:
         return true;
 
     case NodeKind::Break:
@@ -317,6 +318,9 @@ bool Interpreter::evaluate_map(const MapExpression& map, Value& value) {
             return false;
         }
         entries[key.as_string()] = std::move(entry_value);
+    }
+    if (!map.type_name.empty()) {
+        result.map_type() = map.type_name;
     }
     value = std::move(result);
     return true;

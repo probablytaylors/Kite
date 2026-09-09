@@ -49,5 +49,5 @@ back with `kite exec`. `load_bytecode` runs `validate_chunk` first, which
 confirms every constant-pool index and jump target is in range, so a truncated
 or tampered file is rejected instead of crashing the VM.
 
-Planned but not built: user-defined types, and widening the native compiler to
-strings and collections.
+Planned but not built: widening the native compiler to strings, collections,
+and structs.

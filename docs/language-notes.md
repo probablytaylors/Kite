@@ -163,6 +163,12 @@ String literals process the escapes `\n`, `\t`, `\r`, `\0`, `\\`, and `\"`.
 - `.` field access: the parser rewrites `x.field` to `x["field"]` in
   `parse_postfix`, so reads, assignment, and chaining all work through the
   existing index paths.
+- `struct Name { fields }` + `Name { field: value }`. An instance is a
+  `MapObject` with a `type_name` string; the parser recognises a struct literal
+  as an uppercase identifier followed by `{`, so it needs no cross-file
+  registry. Codegen: a `MakeStruct` opcode (`.kbc` 13) that also pops the type
+  name. The semantic pass checks the field set against the declaration.
+  `type_of` and `to_string` read `type_name`.
 - The bytecode VM now covers the whole language and calls every built-in
   through a `CallNative` instruction; `&&` and `||` short-circuit.
 - Optional `: type` / `-> type` annotations; only `kite native` enforces them.

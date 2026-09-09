@@ -34,6 +34,8 @@ const char* token_type_name(TokenType type) {
         return "THROW";
     case TokenType::Import:
         return "IMPORT";
+    case TokenType::Struct:
+        return "STRUCT";
     case TokenType::True:
         return "TRUE";
     case TokenType::False:

@@ -21,6 +21,7 @@ enum class TokenType {
     Catch,
     Throw,
     Import,
+    Struct,
     True,
     False,
     Identifier,

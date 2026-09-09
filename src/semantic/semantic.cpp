@@ -1,5 +1,6 @@
 #include "kite/semantic/semantic.hpp"
 
+#include <algorithm>
 #include <array>
 #include <string_view>
 #include <utility>
@@ -41,11 +42,14 @@ bool SemanticAnalyzer::analyze(const Program& program) {
     scopes_.clear();
     scopes_.emplace_back();
     functions_.clear();
+    structs_.clear();
     in_function_ = false;
     loop_depth_ = 0;
     for (const auto& statement : program.statements) {
         if (const auto* function = dynamic_cast<const FunctionStatement*>(statement.get())) {
             functions_[function->name] = std::vector<SemanticType>(function->parameters.size(), SemanticType::Unknown);
+        } else if (const auto* structure = dynamic_cast<const StructStatement*>(statement.get())) {
+            structs_[structure->name] = structure->fields;
         }
     }
     analyze_block(program.statements);
@@ -167,6 +171,10 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
         report_error("import is only allowed at the top level");
         return;
     }
+    if (dynamic_cast<const StructStatement*>(&statement)) {
+        if (in_function_) report_error("struct is only allowed at the top level");
+        return;
+    }
     if (const auto* function = dynamic_cast<const FunctionStatement*>(&statement)) {
         const bool previous = in_function_;
         const int previous_loop_depth = loop_depth_;
@@ -208,6 +216,31 @@ SemanticType SemanticAnalyzer::analyze_expression(const Expression& expression) 
         for (const auto& entry : map->entries) {
             if (analyze_expression(*entry.first) != SemanticType::String) report_error("map keys must be strings");
             analyze_expression(*entry.second);
+        }
+        if (!map->type_name.empty()) {
+            const auto declared = structs_.find(map->type_name);
+            if (declared == structs_.end()) {
+                report_error("unknown struct: " + map->type_name);
+                return SemanticType::Map;
+            }
+            std::vector<std::string> seen;
+            for (const auto& entry : map->entries) {
+                const auto* key = dynamic_cast<const StringExpression*>(entry.first.get());
+                if (key == nullptr) continue;
+                if (std::find(seen.begin(), seen.end(), key->value) != seen.end()) {
+                    report_error("duplicate field '" + key->value + "' in " + map->type_name);
+                }
+                seen.push_back(key->value);
+                if (std::find(declared->second.begin(), declared->second.end(), key->value) ==
+                    declared->second.end()) {
+                    report_error(map->type_name + " has no field '" + key->value + "'");
+                }
+            }
+            for (const auto& field : declared->second) {
+                if (std::find(seen.begin(), seen.end(), field) == seen.end()) {
+                    report_error("missing field '" + field + "' in " + map->type_name);
+                }
+            }
         }
         return SemanticType::Map;
     }

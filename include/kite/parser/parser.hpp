@@ -26,6 +26,8 @@ private:
     std::unique_ptr<Statement> parse_while_statement();
     std::unique_ptr<Statement> parse_for_statement();
     std::unique_ptr<Statement> parse_function_statement();
+    std::unique_ptr<Statement> parse_struct_statement();
+    std::unique_ptr<Expression> parse_struct_literal();
     std::unique_ptr<Statement> parse_return_statement();
     std::unique_ptr<Statement> parse_try_statement();
     std::unique_ptr<Statement> parse_throw_statement();

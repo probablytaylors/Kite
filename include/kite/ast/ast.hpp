@@ -33,6 +33,7 @@ enum class NodeKind {
     Try,
     Throw,
     Import,
+    Struct,
     Function
 };
 
@@ -103,6 +104,7 @@ struct ArrayExpression final : Expression {
 struct MapExpression final : Expression {
     MapExpression() : Expression(NodeKind::Map) {}
 
+    std::string type_name;
     std::vector<std::pair<std::unique_ptr<Expression>, std::unique_ptr<Expression>>> entries;
 };
 
@@ -244,6 +246,13 @@ struct ImportStatement final : Statement {
     ImportStatement() : Statement(NodeKind::Import) {}
 
     std::string path;
+};
+
+struct StructStatement final : Statement {
+    StructStatement() : Statement(NodeKind::Struct) {}
+
+    std::string name;
+    std::vector<std::string> fields;
 };
 
 struct FunctionStatement final : Statement {

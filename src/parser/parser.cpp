@@ -1,5 +1,6 @@
 #include "kite/parser/parser.hpp"
 
+#include <cctype>
 #include <charconv>
 #include <cstdlib>
 #include <optional>
@@ -55,6 +56,10 @@ std::unique_ptr<Expression> make_call(std::string callee, std::unique_ptr<Expres
     call->callee = std::make_unique<IdentifierExpression>(std::move(callee));
     call->arguments.push_back(std::move(argument));
     return call;
+}
+
+bool is_type_name(const std::string& lexeme) {
+    return !lexeme.empty() && std::isupper(static_cast<unsigned char>(lexeme[0]));
 }
 
 } // namespace
@@ -122,6 +127,9 @@ std::unique_ptr<Statement> Parser::parse_statement() {
     }
     if (current_.type == TokenType::Fn) {
         return parse_function_statement();
+    }
+    if (current_.type == TokenType::Struct) {
+        return parse_struct_statement();
     }
     if (current_.type == TokenType::Return) {
         return parse_return_statement();
@@ -389,6 +397,71 @@ std::unique_ptr<Statement> Parser::parse_function_statement() {
     }
     statement->body = parse_block();
     return statement;
+}
+
+std::unique_ptr<Statement> Parser::parse_struct_statement() {
+    advance();
+    if (current_.type != TokenType::Identifier) {
+        report_error("expected a struct name after 'struct'");
+        return nullptr;
+    }
+    if (!is_type_name(current_.lexeme)) {
+        report_error("struct names must start with an uppercase letter");
+        return nullptr;
+    }
+    auto statement = std::make_unique<StructStatement>();
+    statement->name = current_.lexeme;
+    advance();
+    if (!expect(TokenType::LeftBrace, "expected '{' after the struct name")) {
+        return nullptr;
+    }
+    while (current_.type != TokenType::RightBrace) {
+        if (current_.type != TokenType::Identifier) {
+            report_error("expected a field name in the struct body");
+            return nullptr;
+        }
+        statement->fields.push_back(current_.lexeme);
+        advance();
+        if (current_.type == TokenType::Comma) {
+            advance();
+        } else if (current_.type != TokenType::RightBrace) {
+            report_error("expected ',' or '}' in the struct body");
+            return nullptr;
+        }
+    }
+    advance();
+    return statement;
+}
+
+std::unique_ptr<Expression> Parser::parse_struct_literal() {
+    auto literal = std::make_unique<MapExpression>();
+    literal->type_name = current_.lexeme;
+    advance();
+    advance();
+    while (current_.type != TokenType::RightBrace) {
+        if (current_.type != TokenType::Identifier) {
+            report_error("expected a field name in the struct literal");
+            return nullptr;
+        }
+        auto key = std::make_unique<StringExpression>(current_.lexeme);
+        advance();
+        if (!expect(TokenType::Colon, "expected ':' after the field name")) {
+            return nullptr;
+        }
+        auto value = parse_expression();
+        if (!value) {
+            return nullptr;
+        }
+        literal->entries.emplace_back(std::move(key), std::move(value));
+        if (current_.type == TokenType::Comma) {
+            advance();
+        } else if (current_.type != TokenType::RightBrace) {
+            report_error("expected ',' or '}' in the struct literal");
+            return nullptr;
+        }
+    }
+    advance();
+    return parse_postfix(std::move(literal));
 }
 
 std::unique_ptr<Statement> Parser::parse_return_statement() {
@@ -673,6 +746,9 @@ std::unique_ptr<Expression> Parser::parse_unary() {
 std::unique_ptr<Expression> Parser::parse_primary() {
     switch (current_.type) {
     case TokenType::Identifier: {
+        if (peek_.type == TokenType::LeftBrace && is_type_name(current_.lexeme)) {
+            return parse_struct_literal();
+        }
         auto expression = std::make_unique<IdentifierExpression>(current_.lexeme);
         advance();
         return parse_postfix(std::move(expression));

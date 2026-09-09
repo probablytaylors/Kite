@@ -30,6 +30,7 @@ struct ArrayObject final : Object {
 
 struct MapObject final : Object {
     std::unordered_map<std::string, Value> entries;
+    std::string type_name;
     MapObject() : Object(ValueType::Map) {}
 };
 
@@ -91,6 +92,7 @@ public:
     std::string& as_string() const noexcept { return object<StringObject>()->data; }
     std::vector<Value>& as_array() const noexcept { return object<ArrayObject>()->elements; }
     std::unordered_map<std::string, Value>& as_map() const noexcept { return object<MapObject>()->entries; }
+    std::string& map_type() const noexcept { return object<MapObject>()->type_name; }
 
     const void* identity() const noexcept { return obj_; }
     bool equals(const Value& other) const;

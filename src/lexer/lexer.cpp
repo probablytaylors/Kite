@@ -88,6 +88,8 @@ Token Lexer::scan_identifier_or_keyword() {
         type = TokenType::Throw;
     } else if (lexeme == "import") {
         type = TokenType::Import;
+    } else if (lexeme == "struct") {
+        type = TokenType::Struct;
     } else if (lexeme == "true") {
         type = TokenType::True;
     } else if (lexeme == "false") {

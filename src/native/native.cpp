@@ -200,6 +200,10 @@ private:
         case NodeKind::Throw:
             fail("try/catch is not supported in native mode");
             return;
+        case NodeKind::Struct:
+        case NodeKind::Import:
+            fail("this declaration is not supported in native mode");
+            return;
         case NodeKind::Return: {
             const auto& return_statement = static_cast<const ReturnStatement&>(statement);
             const Type value = return_statement.value ? check_expression(*return_statement.value) : Type::Void;
