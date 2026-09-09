@@ -35,7 +35,7 @@ public:
 private:
     bool execute_statement(const Statement& statement);
     bool execute_block(const std::vector<std::unique_ptr<Statement>>& statements);
-    bool execute_function(const FunctionStatement& function, const std::vector<Value>& arguments, Value& value);
+    bool execute_function(const FunctionStatement& function, std::size_t base, std::size_t argument_count, Value& value);
     bool evaluate(const Expression& expression, Value& value);
     bool evaluate_binary(const BinaryExpression& binary, Value& value);
     bool evaluate_unary(const UnaryExpression& unary, Value& value);

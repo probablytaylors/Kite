@@ -453,6 +453,19 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
     }
     const auto* callee = static_cast<const IdentifierExpression*>(call.callee.get());
 
+    if (const auto function = functions_.find(callee->name); function != functions_.end()) {
+        const std::size_t base = stack_.size();
+        for (const auto& argument_expression : call.arguments) {
+            Value argument;
+            if (!evaluate(*argument_expression, argument)) {
+                stack_.resize(base);
+                return false;
+            }
+            stack_.push_back(std::move(argument));
+        }
+        return execute_function(*function->second, base, call.arguments.size(), value);
+    }
+
     if (callee->name == "print") {
         for (std::size_t index = 0; index < call.arguments.size(); ++index) {
             Value argument;
@@ -715,23 +728,8 @@ bool Interpreter::evaluate_call(const CallExpression& call, Value& value) {
         return true;
     }
 
-    {
-        const auto function = functions_.find(callee->name);
-        if (function == functions_.end()) {
-            report_error("unknown function: " + callee->name);
-            return false;
-        }
-
-        std::vector<Value> arguments;
-        for (const auto& argument_expression : call.arguments) {
-            Value argument;
-            if (!evaluate(*argument_expression, argument)) {
-                return false;
-            }
-            arguments.push_back(std::move(argument));
-        }
-        return execute_function(*function->second, arguments, value);
-    }
+    report_error("unknown function: " + callee->name);
+    return false;
 }
 
 bool Interpreter::evaluate_index(const IndexExpression& index, Value& value) {
@@ -785,10 +783,11 @@ bool Interpreter::evaluate_identifier(const IdentifierExpression& identifier, Va
     return true;
 }
 
-bool Interpreter::execute_function(const FunctionStatement& function, const std::vector<Value>& arguments, Value& value) {
-    if (arguments.size() != function.parameters.size()) {
+bool Interpreter::execute_function(const FunctionStatement& function, std::size_t base, std::size_t argument_count, Value& value) {
+    if (argument_count != function.parameters.size()) {
         report_error("function '" + function.name + "' expected " +
             std::to_string(function.parameters.size()) + " arguments");
+        stack_.resize(base);
         return false;
     }
 
@@ -796,13 +795,9 @@ bool Interpreter::execute_function(const FunctionStatement& function, const std:
     Value previous_return_value = std::move(return_value_);
     return_pending_ = false;
 
-    const std::size_t base = stack_.size();
     frame_bases_.push_back(frame_base_);
     frame_base_ = base;
     stack_.resize(base + static_cast<std::size_t>(function.frame_size));
-    for (std::size_t index = 0; index < arguments.size(); ++index) {
-        stack_[base + index] = arguments[index];
-    }
 
     const bool succeeded = execute_block(function.body);
     if (succeeded) {
