@@ -77,6 +77,21 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
     }
     case NodeKind::Assignment: {
         const auto& assignment = static_cast<const AssignmentStatement&>(statement);
+        if (assignment.slot >= 0 && assignment.value->kind == NodeKind::Binary) {
+            const auto& binary = static_cast<const BinaryExpression&>(*assignment.value);
+            const bool step_by_one = binary.left->kind == NodeKind::Identifier &&
+                static_cast<const IdentifierExpression&>(*binary.left).slot == assignment.slot &&
+                binary.right->kind == NodeKind::Integer &&
+                static_cast<const IntegerExpression&>(*binary.right).value == 1;
+            if (step_by_one && binary.operator_type == BinaryOperator::Add) {
+                emit(OpCode::IncLocal, static_cast<std::size_t>(assignment.slot));
+                return;
+            }
+            if (step_by_one && binary.operator_type == BinaryOperator::Subtract) {
+                emit(OpCode::DecLocal, static_cast<std::size_t>(assignment.slot));
+                return;
+            }
+        }
         compile_expression(*assignment.value);
         if (assignment.slot >= 0) {
             emit(OpCode::StoreLocal, static_cast<std::size_t>(assignment.slot));
@@ -266,6 +281,15 @@ bool BytecodeVm::run(const Chunk& chunk) {
             stack_[base_ + instruction.operand] = std::move(stack_.back());
             stack_.pop_back();
             break;
+        case OpCode::IncLocal:
+        case OpCode::DecLocal: {
+            Value& slot = stack_[base_ + instruction.operand];
+            const std::int64_t delta = instruction.opcode == OpCode::IncLocal ? 1 : -1;
+            if (slot.is_int()) slot = slot.as_int() + delta;
+            else if (slot.is_float()) slot = slot.as_float() + static_cast<double>(delta);
+            else { report_error("operation requires numeric values"); return false; }
+            break;
+        }
         case OpCode::Call: {
             if (instruction.operand >= chunk.functions.size()) {
                 report_error("invalid call target");
@@ -574,7 +598,8 @@ bool operand_is_count(OpCode opcode) {
 }
 
 bool operand_is_slot(OpCode opcode) {
-    return opcode == OpCode::LoadLocal || opcode == OpCode::StoreLocal;
+    return opcode == OpCode::LoadLocal || opcode == OpCode::StoreLocal ||
+        opcode == OpCode::IncLocal || opcode == OpCode::DecLocal;
 }
 
 constexpr std::uint64_t kMaxFunctions = 100'000ull;

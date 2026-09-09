@@ -18,6 +18,8 @@ enum class OpCode {
     Store,
     LoadLocal,
     StoreLocal,
+    IncLocal,
+    DecLocal,
     Add,
     Subtract,
     Multiply,
@@ -106,7 +108,7 @@ private:
 };
 
 inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};
-inline constexpr std::uint32_t kBytecodeFormatVersion = 6;
+inline constexpr std::uint32_t kBytecodeFormatVersion = 7;
 
 bool validate_chunk(const Chunk& chunk, std::string& error);
 bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error);
