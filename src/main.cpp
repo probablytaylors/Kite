@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "kite/builtins.hpp"
+#include "kite/diagnostic.hpp"
 #include "kite/interpreter/interpreter.hpp"
 #include "kite/bytecode/bytecode.hpp"
 #include "kite/module/module.hpp"
@@ -52,6 +53,11 @@ int print_version() {
     return 0;
 }
 
+std::string read_file(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+
 bool load_source(const std::string& path, kite::Program& program) {
     std::vector<std::string> errors;
     if (!kite::load_program(path, program, errors)) {
@@ -61,51 +67,53 @@ bool load_source(const std::string& path, kite::Program& program) {
     return true;
 }
 
-bool front_end(const std::string& path, kite::Program& program) {
+bool front_end(const std::string& path, const std::string& source, kite::Program& program) {
     if (!load_source(path, program)) {
         return false;
     }
     kite::SemanticAnalyzer analyzer;
     if (!analyzer.analyze(program)) {
-        for (const auto& error : analyzer.errors()) std::cerr << error << '\n';
+        kite::print_diagnostics(analyzer.errors(), source, path);
         return false;
     }
     kite::resolve(program);
     return true;
 }
 
-bool compile_chunk(const kite::Program& program, kite::Chunk& chunk) {
+bool compile_chunk(const kite::Program& program, kite::Chunk& chunk, const std::string& source,
+    const std::string& path) {
     kite::BytecodeCompiler compiler;
     chunk = compiler.compile(program);
     if (!compiler.errors().empty()) {
-        for (const auto& error : compiler.errors()) std::cerr << error << '\n';
+        kite::print_diagnostics(compiler.errors(), source, path);
         return false;
     }
     return true;
 }
 
-int run_chunk(const kite::Chunk& chunk) {
+int run_chunk(const kite::Chunk& chunk, const std::string& source, const std::string& path) {
     kite::BytecodeVm vm(std::cout);
     if (!vm.run(chunk)) {
-        for (const auto& error : vm.errors()) std::cerr << error << '\n';
+        kite::print_diagnostics(vm.errors(), source, path);
         return 1;
     }
     return 0;
 }
 
 int run_source(const std::string& path, bool use_bytecode) {
+    const std::string source = read_file(path);
     kite::Program program;
-    if (!front_end(path, program)) return 1;
+    if (!front_end(path, source, program)) return 1;
 
     if (use_bytecode) {
         kite::Chunk chunk;
-        if (!compile_chunk(program, chunk)) return 1;
-        return run_chunk(chunk);
+        if (!compile_chunk(program, chunk, source, path)) return 1;
+        return run_chunk(chunk, source, path);
     }
 
     kite::Interpreter interpreter(std::cout);
     if (!interpreter.execute(program)) {
-        for (const auto& error : interpreter.errors()) std::cerr << error << '\n';
+        kite::print_diagnostics(interpreter.errors(), source, path);
         return 1;
     }
     return 0;
@@ -136,11 +144,12 @@ int build_command(const std::vector<std::string>& args) {
     if (source_path.empty()) return usage();
     if (output_path.empty()) output_path = default_artifact_path(source_path);
 
+    const std::string source = read_file(source_path);
     kite::Program program;
-    if (!front_end(source_path, program)) return 1;
+    if (!front_end(source_path, source, program)) return 1;
 
     kite::Chunk chunk;
-    if (!compile_chunk(program, chunk)) return 1;
+    if (!compile_chunk(program, chunk, source, source_path)) return 1;
 
     std::string error;
     if (!kite::save_bytecode(chunk, output_path, error)) {
@@ -161,7 +170,7 @@ int exec_command(const std::vector<std::string>& args) {
         std::cerr << error << '\n';
         return 1;
     }
-    return run_chunk(chunk);
+    return run_chunk(chunk, "", args[0]);
 }
 
 int native_command(const std::vector<std::string>& args) {

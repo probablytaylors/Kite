@@ -40,11 +40,13 @@ bool Interpreter::execute_block(const std::vector<std::unique_ptr<Statement>>& s
     return true;
 }
 
-const std::vector<std::string>& Interpreter::errors() const {
+const std::vector<Diagnostic>& Interpreter::errors() const {
     return errors_;
 }
 
 bool Interpreter::execute_statement(const Statement& statement) {
+    error_line_ = statement.line;
+    error_column_ = statement.column;
     switch (statement.kind) {
     case NodeKind::Let: {
         const auto& let = static_cast<const LetStatement&>(statement);
@@ -227,7 +229,7 @@ bool Interpreter::execute_statement(const Statement& statement) {
         if (execute_block(node.try_branch)) {
             return true;
         }
-        std::string message = errors_.size() > saved_errors ? errors_.back() : "error";
+        std::string message = errors_.size() > saved_errors ? errors_.back().message : "error";
         errors_.resize(saved_errors);
         stack_.resize(saved_stack);
         if (node.slot >= 0) {
@@ -258,6 +260,10 @@ bool Interpreter::execute_statement(const Statement& statement) {
 }
 
 bool Interpreter::evaluate(const Expression& expression, Value& value) {
+    if (expression.line != 0) {
+        error_line_ = expression.line;
+        error_column_ = expression.column;
+    }
     switch (expression.kind) {
     case NodeKind::Boolean:
         value = static_cast<const BooleanExpression&>(expression).value;
@@ -614,7 +620,7 @@ Value* Interpreter::find_global(const std::string& name) {
 }
 
 void Interpreter::report_error(const std::string& message) {
-    errors_.push_back(message);
+    errors_.push_back({message, error_line_, error_column_});
 }
 
 } // namespace kite

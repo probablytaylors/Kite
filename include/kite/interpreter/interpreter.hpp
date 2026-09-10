@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "kite/ast/ast.hpp"
+#include "kite/diagnostic.hpp"
 #include "kite/value.hpp"
 
 namespace kite {
@@ -16,7 +17,7 @@ public:
     explicit Interpreter(std::ostream& output);
 
     bool execute(const Program& program);
-    const std::vector<std::string>& errors() const;
+    const std::vector<Diagnostic>& errors() const;
 
 private:
     enum class LoopFlow { None, Break, Continue };
@@ -37,7 +38,9 @@ private:
     Value& local(int slot) { return stack_[frame_base_ + static_cast<std::size_t>(slot)]; }
 
     std::ostream& output_;
-    std::vector<std::string> errors_;
+    std::vector<Diagnostic> errors_;
+    std::size_t error_line_ = 0;
+    std::size_t error_column_ = 0;
     std::unordered_map<std::string, Value> globals_;
     std::vector<Value> stack_;
     std::vector<std::size_t> frame_bases_;

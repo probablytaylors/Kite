@@ -43,7 +43,7 @@ Chunk BytecodeCompiler::compile(const Program& program) {
     return chunk_;
 }
 
-const std::vector<std::string>& BytecodeCompiler::errors() const {
+const std::vector<Diagnostic>& BytecodeCompiler::errors() const {
     return errors_;
 }
 
@@ -67,7 +67,7 @@ void BytecodeCompiler::patch_jump(std::size_t instruction, std::size_t target) {
 }
 
 void BytecodeCompiler::report_error(const std::string& message) {
-    errors_.push_back(message);
+    errors_.push_back({message, 0, 0});
 }
 
 void BytecodeCompiler::compile_statement(const Statement& statement) {
@@ -684,7 +684,7 @@ bool BytecodeVm::run(const Chunk& chunk) {
         if (stack_.size() > handler.stack_depth) {
             stack_.resize(handler.stack_depth);
         }
-        std::string message = errors_.empty() ? std::string("error") : std::move(errors_.back());
+        std::string message = errors_.empty() ? std::string("error") : std::move(errors_.back().message);
         errors_.clear();
         stack_.push_back(Value::string(std::move(message)));
         instruction_pointer = handler.target - 1;
@@ -761,8 +761,8 @@ bool BytecodeVm::binary_operation(OpCode opcode) {
     return true;
 }
 
-const std::vector<std::string>& BytecodeVm::errors() const { return errors_; }
-void BytecodeVm::report_error(const std::string& message) { errors_.push_back(message); }
+const std::vector<Diagnostic>& BytecodeVm::errors() const { return errors_; }
+void BytecodeVm::report_error(const std::string& message) { errors_.push_back({message, 0, 0}); }
 
 namespace {
 

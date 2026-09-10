@@ -1,9 +1,9 @@
 #pragma once
 
-#include <string>
 #include <vector>
 
 #include "kite/ast/ast.hpp"
+#include "kite/diagnostic.hpp"
 #include "kite/lexer.hpp"
 
 namespace kite {
@@ -13,7 +13,7 @@ public:
     explicit Parser(Lexer lexer);
 
     Program parse_program();
-    const std::vector<std::string>& errors() const;
+    const std::vector<Diagnostic>& errors() const;
 
 private:
     struct Nest {
@@ -30,6 +30,7 @@ private:
     void report_error(const std::string& message);
     bool expect(TokenType type, const std::string& message);
     std::unique_ptr<Statement> parse_statement();
+    std::unique_ptr<Statement> dispatch_statement();
     std::unique_ptr<Statement> parse_let_statement();
     std::unique_ptr<Statement> parse_assignment_or_expression_statement();
     std::unique_ptr<Statement> parse_if_statement();
@@ -50,6 +51,7 @@ private:
     std::unique_ptr<Expression> parse_multiplicative();
     std::unique_ptr<Expression> parse_unary();
     std::unique_ptr<Expression> parse_primary();
+    std::unique_ptr<Expression> parse_primary_inner();
     std::unique_ptr<Expression> parse_call(std::unique_ptr<Expression> callee);
     std::unique_ptr<Expression> parse_postfix(std::unique_ptr<Expression> expression);
     std::unique_ptr<Expression> parse_array();
@@ -62,7 +64,7 @@ private:
     int synthetic_ = 0;
     int depth_ = 0;
     bool fatal_ = false;
-    std::vector<std::string> errors_;
+    std::vector<Diagnostic> errors_;
 };
 
 } // namespace kite

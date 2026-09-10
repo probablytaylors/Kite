@@ -58,9 +58,21 @@ bool SemanticAnalyzer::analyze(const Program& program) {
     return errors_.empty();
 }
 
-const std::vector<std::string>& SemanticAnalyzer::errors() const { return errors_; }
+const std::vector<Diagnostic>& SemanticAnalyzer::errors() const { return errors_; }
 
-void SemanticAnalyzer::report_error(const std::string& message) { errors_.push_back(message); }
+void SemanticAnalyzer::report_error(const std::string& message) {
+    errors_.push_back({message, error_line_, error_column_});
+}
+
+void SemanticAnalyzer::at(const Statement& node) {
+    error_line_ = node.line;
+    error_column_ = node.column;
+}
+
+void SemanticAnalyzer::at(const Expression& node) {
+    error_line_ = node.line;
+    error_column_ = node.column;
+}
 
 bool SemanticAnalyzer::is_numeric(SemanticType type) const {
     return type == SemanticType::Integer || type == SemanticType::Float;
@@ -89,6 +101,7 @@ SemanticType* SemanticAnalyzer::lookup(const std::string& name) {
 }
 
 void SemanticAnalyzer::analyze_statement(const Statement& statement) {
+    at(statement);
     switch (statement.kind) {
     case NodeKind::Let: {
         const auto& let = static_cast<const LetStatement&>(statement);
@@ -218,6 +231,7 @@ void SemanticAnalyzer::analyze_statement(const Statement& statement) {
 }
 
 void SemanticAnalyzer::analyze_struct_literal(const MapExpression& literal) {
+    at(literal);
     const auto declared = structs_.find(literal.type_name);
     if (declared == structs_.end()) {
         report_error("unknown struct: " + literal.type_name);
@@ -243,6 +257,7 @@ void SemanticAnalyzer::analyze_struct_literal(const MapExpression& literal) {
 }
 
 SemanticType SemanticAnalyzer::analyze_expression(const Expression& expression) {
+    at(expression);
     switch (expression.kind) {
     case NodeKind::Boolean:
         return SemanticType::Boolean;
@@ -315,6 +330,7 @@ SemanticType SemanticAnalyzer::analyze_expression(const Expression& expression) 
 SemanticType SemanticAnalyzer::analyze_binary(const BinaryExpression& binary) {
     const SemanticType left = analyze_expression(*binary.left);
     const SemanticType right = analyze_expression(*binary.right);
+    at(binary);
 
     if (binary.operator_type == BinaryOperator::And || binary.operator_type == BinaryOperator::Or) {
         if (left != SemanticType::Boolean && left != SemanticType::Unknown) {
@@ -346,6 +362,7 @@ SemanticType SemanticAnalyzer::analyze_binary(const BinaryExpression& binary) {
 
 SemanticType SemanticAnalyzer::analyze_call(const CallExpression& call) {
     for (const auto& argument : call.arguments) analyze_expression(*argument);
+    at(call);
     if (call.callee->kind != NodeKind::Identifier) return SemanticType::Unknown;
 
     const std::string& name = static_cast<const IdentifierExpression&>(*call.callee).name;

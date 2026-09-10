@@ -34,6 +34,8 @@ std::unique_ptr<Expression> make_binary(BinaryOperator op, std::unique_ptr<Expre
     std::unique_ptr<Expression> right) {
     auto binary = std::make_unique<BinaryExpression>();
     binary->operator_type = op;
+    binary->line = left->line;
+    binary->column = left->column;
     binary->left = std::move(left);
     binary->right = std::move(right);
     return binary;
@@ -87,7 +89,7 @@ Program Parser::parse_program() {
     return program;
 }
 
-const std::vector<std::string>& Parser::errors() const {
+const std::vector<Diagnostic>& Parser::errors() const {
     return errors_;
 }
 
@@ -97,9 +99,7 @@ void Parser::advance() {
 }
 
 void Parser::report_error(const std::string& message) {
-    errors_.push_back(
-        "line " + std::to_string(current_.line) + ", column " +
-        std::to_string(current_.column) + ": " + message);
+    errors_.push_back({message, current_.line, current_.column});
 }
 
 bool Parser::expect(TokenType type, const std::string& message) {
@@ -118,6 +118,16 @@ std::unique_ptr<Statement> Parser::parse_statement() {
         report_error("nesting is too deep");
         return nullptr;
     }
+    const Token start = current_;
+    auto statement = dispatch_statement();
+    if (statement != nullptr && statement->line == 0) {
+        statement->line = start.line;
+        statement->column = start.column;
+    }
+    return statement;
+}
+
+std::unique_ptr<Statement> Parser::dispatch_statement() {
     if (current_.type == TokenType::Let) {
         return parse_let_statement();
     }
@@ -591,7 +601,13 @@ std::unique_ptr<Expression> Parser::parse_expression() {
         report_error("expression nesting is too deep");
         return nullptr;
     }
-    return parse_logical_or();
+    const Token start = current_;
+    auto expression = parse_logical_or();
+    if (expression != nullptr && expression->line == 0) {
+        expression->line = start.line;
+        expression->column = start.column;
+    }
+    return expression;
 }
 
 std::unique_ptr<Expression> Parser::parse_logical_or() {
@@ -605,11 +621,7 @@ std::unique_ptr<Expression> Parser::parse_logical_or() {
         if (!right) {
             return nullptr;
         }
-        auto binary = std::make_unique<BinaryExpression>();
-        binary->operator_type = BinaryOperator::Or;
-        binary->left = std::move(expression);
-        binary->right = std::move(right);
-        expression = std::move(binary);
+        expression = make_binary(BinaryOperator::Or, std::move(expression), std::move(right));
     }
     return expression;
 }
@@ -625,11 +637,7 @@ std::unique_ptr<Expression> Parser::parse_logical_and() {
         if (!right) {
             return nullptr;
         }
-        auto binary = std::make_unique<BinaryExpression>();
-        binary->operator_type = BinaryOperator::And;
-        binary->left = std::move(expression);
-        binary->right = std::move(right);
-        expression = std::move(binary);
+        expression = make_binary(BinaryOperator::And, std::move(expression), std::move(right));
     }
     return expression;
 }
@@ -671,12 +679,7 @@ std::unique_ptr<Expression> Parser::parse_comparison() {
         if (!right) {
             return nullptr;
         }
-
-        auto binary = std::make_unique<BinaryExpression>();
-        binary->operator_type = operator_type;
-        binary->left = std::move(expression);
-        binary->right = std::move(right);
-        expression = std::move(binary);
+        expression = make_binary(operator_type, std::move(expression), std::move(right));
     }
 
     return expression;
@@ -697,12 +700,7 @@ std::unique_ptr<Expression> Parser::parse_additive() {
         if (!right) {
             return nullptr;
         }
-
-        auto binary = std::make_unique<BinaryExpression>();
-        binary->operator_type = operator_type;
-        binary->left = std::move(expression);
-        binary->right = std::move(right);
-        expression = std::move(binary);
+        expression = make_binary(operator_type, std::move(expression), std::move(right));
     }
 
     return expression;
@@ -724,12 +722,7 @@ std::unique_ptr<Expression> Parser::parse_multiplicative() {
         if (!right) {
             return nullptr;
         }
-
-        auto binary = std::make_unique<BinaryExpression>();
-        binary->operator_type = operator_type;
-        binary->left = std::move(expression);
-        binary->right = std::move(right);
-        expression = std::move(binary);
+        expression = make_binary(operator_type, std::move(expression), std::move(right));
     }
 
     return expression;
@@ -759,6 +752,16 @@ std::unique_ptr<Expression> Parser::parse_unary() {
 }
 
 std::unique_ptr<Expression> Parser::parse_primary() {
+    const Token start = current_;
+    auto expression = parse_primary_inner();
+    if (expression != nullptr && expression->line == 0) {
+        expression->line = start.line;
+        expression->column = start.column;
+    }
+    return expression;
+}
+
+std::unique_ptr<Expression> Parser::parse_primary_inner() {
     switch (current_.type) {
     case TokenType::Identifier: {
         if (peek_.type == TokenType::LeftBrace && is_type_name(current_.lexeme)) {

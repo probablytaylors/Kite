@@ -7,6 +7,7 @@
 #include <system_error>
 #include <utility>
 
+#include "kite/diagnostic.hpp"
 #include "kite/parser/parser.hpp"
 
 #if defined(_WIN32)
@@ -70,11 +71,11 @@ public:
             return false;
         }
 
-        Parser parser{Lexer(std::move(source))};
+        Parser parser{Lexer(source)};
         Program parsed = parser.parse_program();
         if (!parser.errors().empty()) {
-            for (const auto& message : parser.errors()) {
-                errors.push_back(file.filename().string() + ": " + message);
+            for (const auto& diagnostic : parser.errors()) {
+                errors.push_back(format_diagnostic(diagnostic, source, file.filename().string()));
             }
             return false;
         }

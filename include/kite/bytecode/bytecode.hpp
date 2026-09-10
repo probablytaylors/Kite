@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "kite/ast/ast.hpp"
+#include "kite/diagnostic.hpp"
 #include "kite/value.hpp"
 
 namespace kite {
@@ -77,7 +78,7 @@ struct Chunk {
 class BytecodeCompiler {
 public:
     Chunk compile(const Program& program);
-    const std::vector<std::string>& errors() const;
+    const std::vector<Diagnostic>& errors() const;
 
 private:
     struct LoopContext {
@@ -98,7 +99,7 @@ private:
     std::unordered_map<std::string, std::size_t> function_indices_;
     std::vector<LoopContext> loops_;
     int handler_depth_ = 0;
-    std::vector<std::string> errors_;
+    std::vector<Diagnostic> errors_;
 };
 
 class BytecodeVm {
@@ -106,7 +107,7 @@ public:
     explicit BytecodeVm(std::ostream& output);
 
     bool run(const Chunk& chunk);
-    const std::vector<std::string>& errors() const;
+    const std::vector<Diagnostic>& errors() const;
 
 private:
     struct Frame {
@@ -129,7 +130,7 @@ private:
     std::vector<Handler> handlers_;
     std::size_t base_ = 0;
     std::unordered_map<std::string, Value> variables_;
-    std::vector<std::string> errors_;
+    std::vector<Diagnostic> errors_;
 };
 
 inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};

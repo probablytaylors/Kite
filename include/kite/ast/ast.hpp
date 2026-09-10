@@ -42,6 +42,8 @@ struct Expression {
     virtual ~Expression() = default;
 
     NodeKind kind;
+    std::size_t line = 0;
+    std::size_t column = 0;
 };
 
 struct Statement {
@@ -49,6 +51,8 @@ struct Statement {
     virtual ~Statement() = default;
 
     NodeKind kind;
+    std::size_t line = 0;
+    std::size_t column = 0;
 };
 
 struct Program {
