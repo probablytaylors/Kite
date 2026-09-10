@@ -2,15 +2,12 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cctype>
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "kite/version.hpp"
@@ -82,23 +79,26 @@ std::string without_v(const std::string& tag) {
     return (!tag.empty() && (tag[0] == 'v' || tag[0] == 'V')) ? tag.substr(1) : tag;
 }
 
-std::string spinner(const std::string& label, const std::string& command) {
-    std::atomic<bool> done{false};
-    std::string result;
-    std::thread worker([&] {
-        result = run_capture(command);
-        done.store(true);
-    });
-    const char* frames = "|/-\\";
-    int index = 0;
-    while (!done.load()) {
-        std::cout << "\r  " << cyan(std::string(1, frames[index & 3])) << ' ' << label << std::flush;
-        std::this_thread::sleep_for(std::chrono::milliseconds(90));
-        ++index;
+std::string fetch(const std::string& label, const std::string& command) {
+    std::cout << "  " << dim(label + "...") << std::endl;
+    return run_capture(command);
+}
+
+int fail(const std::string& message) {
+    std::cerr << "  " << red(std::string(cross()) + ' ' + message) << "\n\n";
+    return 1;
+}
+
+void print_wrapped(const std::string& text, std::size_t width) {
+    for (std::size_t start = 0; start < text.size(); ) {
+        std::size_t length = text.size() - start;
+        if (length > width) {
+            const std::size_t space = text.rfind(' ', start + width);
+            length = space > start ? space - start : width;
+        }
+        std::cout << "  " << text.substr(start, length) << '\n';
+        start += length + (start + length < text.size() ? 1 : 0);
     }
-    worker.join();
-    std::cout << "\r  " << green(tick()) << ' ' << label << "   \n";
-    return result;
 }
 
 std::string temp_dir() {
@@ -173,7 +173,7 @@ std::vector<std::string> parse_release_tags(const std::string& feed) {
 }
 
 std::string latest_tag() {
-    const std::string effective = trim(spinner("Checking for updates",
+    const std::string effective = trim(fetch("Checking for updates",
         "curl -s -L -o NUL -w \"%{url_effective}\" " + std::string(kRepoUrl) + "/releases/latest"));
     const std::size_t marker = effective.find("/tag/");
     if (marker == std::string::npos) return "";
@@ -182,7 +182,7 @@ std::string latest_tag() {
 }
 
 std::vector<std::string> all_tags() {
-    return parse_release_tags(spinner("Fetching releases",
+    return parse_release_tags(fetch("Fetching releases",
         "curl -s -L " + std::string(kRepoUrl) + "/releases.atom"));
 }
 
@@ -196,119 +196,41 @@ std::string match_version(const std::string& spec, const std::vector<std::string
 
 struct ReleaseNotes {
     std::string summary;
-    std::vector<std::string> highlights;
     bool security = false;
 };
 
-std::string strip_markdown(const std::string& text) {
-    std::string out;
-    for (std::size_t index = 0; index < text.size(); ++index) {
-        const char character = text[index];
-        if (character == '`' || character == '*') continue;
-        if (character == '[') {
-            const std::size_t close = text.find(']', index);
-            if (close != std::string::npos && close + 1 < text.size() && text[close + 1] == '(') {
-                const std::size_t paren = text.find(')', close);
-                if (paren != std::string::npos) {
-                    out += text.substr(index + 1, close - index - 1);
-                    index = paren;
-                    continue;
-                }
-            }
-        }
-        out += character;
-    }
-    return out;
-}
-
-std::string first_sentences(std::string entry, int count) {
-    entry = strip_markdown(trim(entry));
-    int seen = 0;
-    for (std::size_t index = 0; index + 1 < entry.size(); ++index) {
-        if (entry[index] == '.' && entry[index + 1] == ' ') {
-            if (++seen >= count) { entry.resize(index + 1); break; }
-        }
-    }
-    return trim(entry);
-}
-
-std::string headline(std::string entry) {
-    entry = first_sentences(std::move(entry), 1);
-    if (!entry.empty() && entry.back() == '.') entry.pop_back();
-    if (entry.size() > 74) {
-        std::size_t cut = entry.rfind(' ', 74);
-        if (cut == std::string::npos || cut < 40) cut = 74;
-        entry.resize(cut);
-        entry += "...";
-    }
-    return trim(entry);
-}
-
-void print_wrapped(const std::string& text, const std::string& indent, std::size_t width) {
-    std::size_t start = 0;
-    while (start < text.size()) {
-        if (text.size() - start <= width) {
-            std::cout << indent << text.substr(start) << '\n';
-            return;
-        }
-        std::size_t space = text.rfind(' ', start + width);
-        if (space == std::string::npos || space <= start) space = start + width;
-        std::cout << indent << text.substr(start, space - start) << '\n';
-        start = space + 1;
-    }
-}
-
+// Reads the CHANGELOG section for `tag`: the lead paragraph becomes the summary,
+// and any mention of "security" flags the release. The section is expected to
+// open with a plain sentence or two before the first `-`/`#` line.
 ReleaseNotes release_notes(const std::string& tag) {
     const std::string text = run_capture(
         "curl -s -L -f " + std::string(kRawUrl) + "/" + tag + "/CHANGELOG.md");
-    std::vector<std::string> lines;
-    std::string current;
-    for (char character : text) {
-        if (character == '\n') { lines.push_back(current); current.clear(); }
-        else if (character != '\r') { current.push_back(character); }
-    }
-    if (!current.empty()) lines.push_back(current);
 
     ReleaseNotes notes;
-    std::string lead;
-    std::string pending;
-    bool seen_structure = false;
-    const auto flush = [&] {
-        const std::string raw = trim(pending);
-        pending.clear();
-        if (raw.empty()) return;
-        if (lowercase(raw).find("security") != std::string::npos) notes.security = true;
-        if (notes.highlights.size() >= 3) return;
-        const std::string line = headline(raw);
-        if (!line.empty()) notes.highlights.push_back(line);
-    };
-
     bool inside = false;
-    for (const std::string& line : lines) {
+    std::string line;
+    for (std::size_t start = 0; start <= text.size(); ) {
+        const std::size_t newline = text.find('\n', start);
+        line = trim(text.substr(start, newline == std::string::npos ? std::string::npos : newline - start));
+        start = newline == std::string::npos ? text.size() + 1 : newline + 1;
+
         if (line.rfind("## ", 0) == 0) {
             if (inside) break;
-            if (lowercase(line).find("unreleased") != std::string::npos) continue;
-            inside = true;
+            inside = lowercase(line).find("unreleased") == std::string::npos;
             continue;
         }
         if (!inside) continue;
-        const std::string entry = trim(line);
-        if (entry.rfind("- ", 0) == 0) { seen_structure = true; flush(); pending = entry.substr(2); }
-        else if (entry.rfind("#", 0) == 0) {
-            seen_structure = true;
-            if (lowercase(entry).find("security") != std::string::npos) notes.security = true;
-            flush();
+        if (lowercase(line).find("security") != std::string::npos) notes.security = true;
+        if (line.rfind('-', 0) == 0 || line.rfind('#', 0) == 0) {
+            if (!notes.summary.empty()) break;
+            continue;
         }
-        else if (entry.empty()) { flush(); }
-        else if (!pending.empty()) pending += ' ' + entry;
-        else if (!seen_structure) lead += (lead.empty() ? "" : " ") + entry;
+        if (!line.empty()) notes.summary += (notes.summary.empty() ? "" : " ") + line;
     }
-    flush();
 
-    if (!lead.empty()) {
-        notes.summary = first_sentences(lead, 2);
-        if (lowercase(lead).find("security") != std::string::npos) notes.security = true;
-    }
+    notes.summary.erase(std::remove(notes.summary.begin(), notes.summary.end(), '`'),
+        notes.summary.end());
+    if (notes.summary.size() > 200) notes.summary.resize(200);
     return notes;
 }
 
@@ -340,29 +262,20 @@ int perform_update(const std::string& tag) {
 
     std::cout << '\n' << "  " << cyan(std::string(arrow()) + " Downloading ") << dim(without_v(tag)) << '\n';
     if (std::system(("curl -fL --progress-bar -o \"" + installer + "\" " + base + "kite-setup.exe").c_str()) != 0) {
-        std::cerr << "  " << red(std::string(cross()) + " Download failed.")
-                  << " Check your connection and try again.\n";
-        return 1;
+        return fail("Download failed. Check your connection and try again.");
     }
 
     std::system(("curl -sL -f -o \"" + checksum + "\" " + base + "kite-setup.exe.sha256").c_str());
-    std::ifstream checksum_file(checksum);
     std::string expected;
-    if (checksum_file) {
+    if (std::ifstream checksum_file{checksum}) {
         checksum_file >> expected;
         expected = lowercase(expected);
     }
     if (expected.size() != 64) {
-        std::cerr << "  " << red(std::string(cross()) + " Could not fetch the checksum for this download.")
-                  << " Aborting.\n"
-                  << "  " << dim("Download the installer yourself from " + std::string(kRepoUrl) + "/releases")
-                  << "\n\n";
-        return 1;
+        return fail("Could not fetch the checksum for this download. Aborting.");
     }
     if (expected != file_sha256(installer)) {
-        std::cerr << "  " << red(std::string(cross()) + " Checksum mismatch")
-                  << " - the download does not match what was published. Aborting.\n\n";
-        return 1;
+        return fail("Checksum mismatch - the download does not match what was published. Aborting.");
     }
     std::cout << "  " << green(tick()) << " Checksum verified\n";
 
@@ -376,10 +289,7 @@ int perform_update(const std::string& tag) {
 
 int show_list(const std::string& current_version) {
     const std::vector<std::string> tags = all_tags();
-    if (tags.empty()) {
-        std::cerr << "  " << red(std::string(cross()) + " Could not reach the release feed.") << '\n';
-        return 1;
-    }
+    if (tags.empty()) return fail("Could not reach the release feed.");
     std::cout << "\n  " << bold("Releases") << '\n';
     for (const std::string& tag : tags) {
         const std::string version = without_v(tag);
@@ -403,35 +313,22 @@ int update_windows(const UpdateOptions& options) {
     std::string tag;
     if (wants_specific) {
         const std::vector<std::string> tags = all_tags();
-        if (tags.empty()) {
-            std::cerr << "  " << red(std::string(cross()) + " Could not reach the release feed.") << '\n';
-            return 1;
-        }
+        if (tags.empty()) return fail("Could not reach the release feed.");
         tag = match_version(options.version, tags);
         if (tag.empty()) {
-            std::cerr << "  " << red(std::string(cross()) + " No release ") << options.version
-                      << ". Available: ";
-            for (std::size_t index = 0; index < tags.size(); ++index) {
-                std::cerr << (index > 0 ? ", " : "") << without_v(tags[index]);
-            }
-            std::cerr << "\n\n";
-            return 1;
+            std::string available;
+            for (const std::string& known : tags) available += (available.empty() ? "" : ", ") + without_v(known);
+            return fail("No release " + options.version + ". Available: " + available);
         }
     } else {
         tag = latest_tag();
     }
 
-    if (tag.empty()) {
-        std::cerr << "  " << red(std::string(cross()) + " Could not reach the release feed.") << '\n';
-        return 1;
-    }
+    if (tag.empty()) return fail("Could not reach the release feed.");
 
     SemVer target;
     const SemVer current{kVersionMajor, kVersionMinor, kVersionPatch};
-    if (!parse_semver(tag, target)) {
-        std::cerr << "  " << red(std::string(cross()) + " Unexpected release tag: ") << tag << '\n';
-        return 1;
-    }
+    if (!parse_semver(tag, target)) return fail("Unexpected release tag: " + tag);
 
     const int direction = compare(target, current);
     const std::string shown = without_v(tag);
@@ -454,16 +351,8 @@ int update_windows(const UpdateOptions& options) {
         std::cout << "  " << yellow(std::string(warn_mark()) + " Includes security fixes")
                   << dim(" - updating is recommended") << "\n\n";
     }
-    if (!notes.summary.empty()) {
-        print_wrapped(notes.summary, "  ", 76);
-    } else {
-        for (const std::string& entry : notes.highlights) {
-            std::cout << "    " << dim("-") << ' ' << entry << '\n';
-        }
-    }
-    if (!notes.summary.empty() || !notes.highlights.empty()) {
-        std::cout << "  " << dim(std::string(kRepoUrl) + "/blob/" + tag + "/CHANGELOG.md") << "\n\n";
-    }
+    if (!notes.summary.empty()) print_wrapped(notes.summary, 76);
+    std::cout << "  " << dim(std::string(kRepoUrl) + "/blob/" + tag + "/CHANGELOG.md") << "\n\n";
 
     if (options.check) {
         std::cout << "  Run " << cyan(wants_specific ? "kite update " + shown : "kite update")
