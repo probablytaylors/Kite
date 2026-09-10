@@ -6,6 +6,8 @@
 
 - String interpolation: `"total is ${a + b}"`. Each `${...}` is parsed as an
   expression and wrapped with `str`. `\${` is a literal `${`.
+- Compound assignment on an index or field: `xs[i] += 1`, `counts.hits += 1`.
+  The target and index must be plain (an identifier or literal).
 
 ### Errors
 

@@ -64,6 +64,40 @@ bool is_type_name(const std::string& lexeme) {
     return !lexeme.empty() && std::isupper(static_cast<unsigned char>(lexeme[0]));
 }
 
+std::optional<BinaryOperator> compound_operator(TokenType type) {
+    switch (type) {
+    case TokenType::PlusEqual: return BinaryOperator::Add;
+    case TokenType::MinusEqual: return BinaryOperator::Subtract;
+    case TokenType::StarEqual: return BinaryOperator::Multiply;
+    case TokenType::SlashEqual: return BinaryOperator::Divide;
+    case TokenType::PercentEqual: return BinaryOperator::Modulo;
+    default: return std::nullopt;
+    }
+}
+
+std::unique_ptr<Expression> clone_leaf(const Expression& expression) {
+    std::unique_ptr<Expression> copy;
+    switch (expression.kind) {
+    case NodeKind::Identifier:
+        copy = std::make_unique<IdentifierExpression>(
+            static_cast<const IdentifierExpression&>(expression).name);
+        break;
+    case NodeKind::Integer:
+        copy = std::make_unique<IntegerExpression>(
+            static_cast<const IntegerExpression&>(expression).value);
+        break;
+    case NodeKind::String:
+        copy = std::make_unique<StringExpression>(
+            static_cast<const StringExpression&>(expression).value);
+        break;
+    default:
+        return nullptr;
+    }
+    copy->line = expression.line;
+    copy->column = expression.column;
+    return copy;
+}
+
 void restamp(Expression& expression, std::size_t line, std::size_t column) {
     expression.line = line;
     expression.column = column;
@@ -645,17 +679,7 @@ std::unique_ptr<Statement> Parser::parse_assignment_or_expression_statement() {
             return statement->value ? std::move(statement) : nullptr;
         }
 
-        const auto compound = [&]() -> std::optional<BinaryOperator> {
-            switch (current_.type) {
-            case TokenType::PlusEqual: return BinaryOperator::Add;
-            case TokenType::MinusEqual: return BinaryOperator::Subtract;
-            case TokenType::StarEqual: return BinaryOperator::Multiply;
-            case TokenType::SlashEqual: return BinaryOperator::Divide;
-            case TokenType::PercentEqual: return BinaryOperator::Modulo;
-            default: return std::nullopt;
-            }
-        }();
-        if (compound) {
+        if (const auto compound = compound_operator(current_.type)) {
             advance();
             auto right = parse_expression();
             if (!right) {
@@ -674,18 +698,33 @@ std::unique_ptr<Statement> Parser::parse_assignment_or_expression_statement() {
             return nullptr;
         }
 
-        if (expression->kind == NodeKind::Index && current_.type == TokenType::Equal) {
+        if (expression->kind == NodeKind::Index) {
             auto& indexed = static_cast<IndexExpression&>(*expression);
-            advance();
-            auto right = parse_expression();
-            if (!right) {
-                return nullptr;
+            const auto compound = compound_operator(current_.type);
+            if (current_.type == TokenType::Equal || compound) {
+                std::unique_ptr<Expression> read;
+                if (compound) {
+                    auto target = clone_leaf(*indexed.target);
+                    auto index = clone_leaf(*indexed.index);
+                    if (target == nullptr || index == nullptr) {
+                        report_error("compound assignment needs a plain target");
+                        return nullptr;
+                    }
+                    read = make_index(std::move(target), std::move(index));
+                }
+                advance();
+                auto right = parse_expression();
+                if (!right) {
+                    return nullptr;
+                }
+                auto statement = std::make_unique<IndexAssignmentStatement>();
+                statement->target = std::move(indexed.target);
+                statement->index = std::move(indexed.index);
+                statement->value = compound
+                    ? make_binary(*compound, std::move(read), std::move(right))
+                    : std::move(right);
+                return statement;
             }
-            auto statement = std::make_unique<IndexAssignmentStatement>();
-            statement->target = std::move(indexed.target);
-            statement->index = std::move(indexed.index);
-            statement->value = std::move(right);
-            return statement;
         }
 
         auto statement = std::make_unique<ExpressionStatement>();
