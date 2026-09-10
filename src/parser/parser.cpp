@@ -64,6 +64,47 @@ bool is_type_name(const std::string& lexeme) {
     return !lexeme.empty() && std::isupper(static_cast<unsigned char>(lexeme[0]));
 }
 
+void restamp(Expression& expression, std::size_t line, std::size_t column) {
+    expression.line = line;
+    expression.column = column;
+    switch (expression.kind) {
+    case NodeKind::Array:
+        for (auto& element : static_cast<ArrayExpression&>(expression).elements) {
+            restamp(*element, line, column);
+        }
+        return;
+    case NodeKind::Map:
+        for (auto& entry : static_cast<MapExpression&>(expression).entries) {
+            restamp(*entry.first, line, column);
+            restamp(*entry.second, line, column);
+        }
+        return;
+    case NodeKind::Index: {
+        auto& index = static_cast<IndexExpression&>(expression);
+        restamp(*index.target, line, column);
+        restamp(*index.index, line, column);
+        return;
+    }
+    case NodeKind::Unary:
+        restamp(*static_cast<UnaryExpression&>(expression).operand, line, column);
+        return;
+    case NodeKind::Binary: {
+        auto& binary = static_cast<BinaryExpression&>(expression);
+        restamp(*binary.left, line, column);
+        restamp(*binary.right, line, column);
+        return;
+    }
+    case NodeKind::Call: {
+        auto& call = static_cast<CallExpression&>(expression);
+        restamp(*call.callee, line, column);
+        for (auto& argument : call.arguments) restamp(*argument, line, column);
+        return;
+    }
+    default:
+        return;
+    }
+}
+
 } // namespace
 
 Parser::Parser(Lexer lexer)
@@ -521,6 +562,66 @@ std::unique_ptr<Statement> Parser::parse_throw_statement() {
     return statement->value ? std::move(statement) : nullptr;
 }
 
+std::unique_ptr<Expression> Parser::parse_string_expression(const std::string& lexeme) {
+    std::unique_ptr<Expression> result;
+    std::string literal;
+    const auto flush = [&] {
+        if (literal.empty()) return;
+        auto piece = std::make_unique<StringExpression>(std::move(literal));
+        literal.clear();
+        piece->line = current_.line;
+        piece->column = current_.column;
+        result = result == nullptr
+            ? std::move(piece)
+            : make_binary(BinaryOperator::Add, std::move(result), std::move(piece));
+    };
+
+    for (std::size_t index = 1; index + 1 < lexeme.size(); ++index) {
+        const char character = lexeme[index];
+        if (character == '\\' && index + 2 < lexeme.size()) {
+            switch (lexeme[++index]) {
+            case 'n': literal.push_back('\n'); break;
+            case 't': literal.push_back('\t'); break;
+            case 'r': literal.push_back('\r'); break;
+            case '0': literal.push_back('\0'); break;
+            case '\\': literal.push_back('\\'); break;
+            case '"': literal.push_back('"'); break;
+            default: literal.push_back(lexeme[index]); break;
+            }
+            continue;
+        }
+        if (character == '$' && index + 1 < lexeme.size() && lexeme[index + 1] == '{') {
+            flush();
+            index += 2;
+            const std::size_t begin = index;
+            for (int depth = 1; index + 1 < lexeme.size(); ++index) {
+                if (lexeme[index] == '{') ++depth;
+                else if (lexeme[index] == '}' && --depth == 0) break;
+            }
+            Parser sub{Lexer(lexeme.substr(begin, index - begin))};
+            auto embedded = sub.parse_expression();
+            for (const auto& diagnostic : sub.errors()) errors_.push_back(diagnostic);
+            if (embedded == nullptr) {
+                report_error("invalid expression in string interpolation");
+                return nullptr;
+            }
+            restamp(*embedded, current_.line, current_.column);
+            auto call = std::make_unique<CallExpression>();
+            call->callee = std::make_unique<IdentifierExpression>("str");
+            call->arguments.push_back(std::move(embedded));
+            call->line = current_.line;
+            call->column = current_.column;
+            result = result == nullptr
+                ? std::move(call)
+                : make_binary(BinaryOperator::Add, std::move(result), std::move(call));
+            continue;
+        }
+        literal.push_back(character);
+    }
+    flush();
+    return result != nullptr ? std::move(result) : std::make_unique<StringExpression>("");
+}
+
 std::unique_ptr<Statement> Parser::parse_expression_statement() {
     auto statement = std::make_unique<ExpressionStatement>();
     statement->expression = parse_expression();
@@ -804,9 +905,9 @@ std::unique_ptr<Expression> Parser::parse_primary_inner() {
         return std::make_unique<FloatExpression>(value);
     }
     case TokenType::String: {
-        std::string value = decode_string_literal(current_.lexeme);
+        auto expression = parse_string_expression(current_.lexeme);
         advance();
-        return std::make_unique<StringExpression>(std::move(value));
+        return expression;
     }
     case TokenType::LeftBracket:
         return parse_postfix(parse_array());

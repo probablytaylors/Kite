@@ -367,11 +367,15 @@ SemanticType SemanticAnalyzer::analyze_call(const CallExpression& call) {
 
     const std::string& name = static_cast<const IdentifierExpression&>(*call.callee).name;
     if (name == "print" || name == "write_file") return SemanticType::Empty;
-    if (name == "len") return SemanticType::Integer;
-    if (name == "upper" || name == "lower" || name == "read_file" || name == "type_of") {
+    if (name == "len" || name == "int") return SemanticType::Integer;
+    if (name == "float") return SemanticType::Float;
+    if (name == "str" || name == "upper" || name == "lower" || name == "trim" || name == "replace" ||
+        name == "substring" || name == "join" || name == "read_file" || name == "type_of") {
         return SemanticType::String;
     }
-    if (name == "append") return SemanticType::Array;
+    if (name == "append" || name == "split" || name == "keys" || name == "range") {
+        return SemanticType::Array;
+    }
     if (functions_.contains(name)) return SemanticType::Unknown;
     if (is_math_function(name)) return SemanticType::Float;
     return SemanticType::Unknown;

@@ -128,6 +128,28 @@ Token Lexer::scan_string() {
     while (current() != '"' && current() != '\n' && current() != '\0') {
         if (current() == '\\' && peek(1) != '\0' && peek(1) != '\n') {
             advance();
+            advance();
+            continue;
+        }
+        if (current() == '$' && peek(1) == '{') {
+            advance();
+            advance();
+            int depth = 1;
+            while (depth > 0 && current() != '\0' && current() != '\n') {
+                if (current() == '"') {
+                    advance();
+                    while (current() != '"' && current() != '\0' && current() != '\n') {
+                        if (current() == '\\' && peek(1) != '\0') advance();
+                        advance();
+                    }
+                } else if (current() == '{') {
+                    ++depth;
+                } else if (current() == '}') {
+                    --depth;
+                }
+                advance();
+            }
+            continue;
         }
         advance();
     }

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Language
+
+- String interpolation: `"total is ${a + b}"`. Each `${...}` is parsed as an
+  expression and wrapped with `str`. `\${` is a literal `${`.
+
+### Errors
+
 Errors now point at the source. The parser, semantic analyzer, and interpreter
 report a line and column, and the offending line is printed with a caret:
 
