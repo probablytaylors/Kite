@@ -29,8 +29,12 @@ public:
 
 private:
     SemanticType analyze_expression(const Expression& expression);
+    SemanticType analyze_binary(const BinaryExpression& binary);
+    SemanticType analyze_call(const CallExpression& call);
     void analyze_statement(const Statement& statement);
     void analyze_block(const std::vector<std::unique_ptr<Statement>>& statements);
+    void analyze_struct_literal(const MapExpression& literal);
+    SemanticType* lookup(const std::string& name);
     void report_error(const std::string& message);
     bool is_numeric(SemanticType type) const;
     bool is_condition(SemanticType type) const;
