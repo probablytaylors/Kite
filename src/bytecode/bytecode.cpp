@@ -15,6 +15,7 @@ Chunk BytecodeCompiler::compile(const Program& program) {
     function_indices_.clear();
     loops_.clear();
     handler_depth_ = 0;
+    current_line_ = 0;
     errors_.clear();
 
     for (const auto& statement : program.statements) {
@@ -54,6 +55,7 @@ std::size_t BytecodeCompiler::add_constant(Value value) {
 
 void BytecodeCompiler::emit(OpCode opcode, std::size_t operand) {
     chunk_.code.push_back({opcode, operand});
+    chunk_.lines.push_back(current_line_);
 }
 
 std::size_t BytecodeCompiler::emit_jump(OpCode opcode) {
@@ -71,6 +73,7 @@ void BytecodeCompiler::report_error(const std::string& message) {
 }
 
 void BytecodeCompiler::compile_statement(const Statement& statement) {
+    if (statement.line != 0) current_line_ = static_cast<std::uint32_t>(statement.line);
     switch (statement.kind) {
     case NodeKind::Let: {
         const auto& let = static_cast<const LetStatement&>(statement);
@@ -240,6 +243,7 @@ void BytecodeCompiler::compile_statement(const Statement& statement) {
 }
 
 void BytecodeCompiler::compile_expression(const Expression& expression) {
+    if (expression.line != 0) current_line_ = static_cast<std::uint32_t>(expression.line);
     switch (expression.kind) {
     case NodeKind::Boolean:
         emit(OpCode::Constant, add_constant(static_cast<const BooleanExpression&>(expression).value));
@@ -361,10 +365,12 @@ bool BytecodeVm::run(const Chunk& chunk) {
     frames_.clear();
     handlers_.clear();
     base_ = 0;
+    current_line_ = 0;
     variables_.clear();
     errors_.clear();
     for (std::size_t instruction_pointer = 0; instruction_pointer < chunk.code.size(); ++instruction_pointer) {
         const Instruction instruction = chunk.code[instruction_pointer];
+        if (instruction_pointer < chunk.lines.size()) current_line_ = chunk.lines[instruction_pointer];
         switch (instruction.opcode) {
         case OpCode::Constant:
             stack_.push_back(chunk.constants[instruction.operand]);
@@ -762,7 +768,7 @@ bool BytecodeVm::binary_operation(OpCode opcode) {
 }
 
 const std::vector<Diagnostic>& BytecodeVm::errors() const { return errors_; }
-void BytecodeVm::report_error(const std::string& message) { errors_.push_back({message, 0, 0}); }
+void BytecodeVm::report_error(const std::string& message) { errors_.push_back({message, current_line_, 0}); }
 
 namespace {
 
@@ -862,6 +868,10 @@ constexpr std::uint64_t kMaxFrameSlots = 100'000ull;
 } // namespace
 
 bool validate_chunk(const Chunk& chunk, std::string& error) {
+    if (!chunk.lines.empty() && chunk.lines.size() != chunk.code.size()) {
+        error = "line table does not match the instruction stream";
+        return false;
+    }
     for (const auto& function : chunk.functions) {
         if (function.address >= chunk.code.size()) {
             error = "function address out of range";
@@ -942,6 +952,9 @@ bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& err
         write_binary(output, opcode);
         write_binary(output, operand);
     }
+    for (std::size_t index = 0; index < chunk.code.size(); ++index) {
+        write_binary(output, index < chunk.lines.size() ? chunk.lines[index] : std::uint32_t{0});
+    }
 
     const std::uint64_t functions = chunk.functions.size();
     write_binary(output, functions);
@@ -989,7 +1002,7 @@ bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
 
     std::uint64_t instructions = 0;
     if (!read_binary(input, instructions) || instructions > kMaxInstructions ||
-        instructions * 9 > remaining) {
+        instructions * 13 > remaining) {
         error = "invalid bytecode instruction stream";
         return false;
     }
@@ -1002,6 +1015,10 @@ bool load_bytecode(const std::string& path, Chunk& chunk, std::string& error) {
             return false;
         }
         instruction = {static_cast<OpCode>(opcode), static_cast<std::size_t>(operand)};
+    }
+    chunk.lines.resize(static_cast<std::size_t>(instructions));
+    for (auto& line : chunk.lines) {
+        if (!read_binary(input, line)) { error = "truncated bytecode line table"; return false; }
     }
 
     std::uint64_t functions = 0;

@@ -26,20 +26,24 @@ std::string format_diagnostic(const Diagnostic& diagnostic, const std::string& s
     const std::string& path) {
     std::ostringstream out;
     out << path;
-    if (diagnostic.line > 0) out << ':' << diagnostic.line << ':' << diagnostic.column;
+    if (diagnostic.line > 0) {
+        out << ':' << diagnostic.line;
+        if (diagnostic.column > 0) out << ':' << diagnostic.column;
+    }
     out << ": " << diagnostic.message;
 
-    if (diagnostic.line > 0) {
-        const std::string text = source_line(source, diagnostic.line);
-        if (!text.empty()) {
-            const std::string gutter(std::to_string(diagnostic.line).size(), ' ');
-            out << '\n' << ' ' << diagnostic.line << " | " << text;
-            out << '\n' << ' ' << gutter << " | ";
-            for (std::size_t index = 1; index < diagnostic.column && index <= text.size() + 1; ++index) {
-                out << (index <= text.size() && text[index - 1] == '\t' ? '\t' : ' ');
-            }
-            out << '^';
+    if (diagnostic.line == 0) return out.str();
+    const std::string text = source_line(source, diagnostic.line);
+    if (text.empty()) return out.str();
+
+    const std::string gutter(std::to_string(diagnostic.line).size(), ' ');
+    out << '\n' << ' ' << diagnostic.line << " | " << text;
+    if (diagnostic.column > 0) {
+        out << '\n' << ' ' << gutter << " | ";
+        for (std::size_t index = 1; index < diagnostic.column && index <= text.size() + 1; ++index) {
+            out << (index <= text.size() && text[index - 1] == '\t' ? '\t' : ' ');
         }
+        out << '^';
     }
     return out.str();
 }

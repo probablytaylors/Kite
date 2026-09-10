@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+Errors now point at the source. The parser, semantic analyzer, and interpreter
+report a line and column, and the offending line is printed with a caret:
+
+```
+script.kite:12:7: unknown identifier: total
+ 12 | print(total)
+    |       ^
+```
+
+The bytecode VM carries a line table (`.kbc` format 14), so its runtime errors
+show the line too (no column yet).
+
+### Internal
+
+- The semantic analyzer dispatches on `NodeKind` like the rest of the pipeline
+  instead of `dynamic_cast` chains.
+- `kite update`'s "what's new" reader is simpler and strips Markdown.
+
 ## 0.3.2 - 2026-09-09
 
 Security fixes from a full audit. Update if you ever run `kite exec` on a `.kbc`

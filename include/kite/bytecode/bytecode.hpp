@@ -72,6 +72,7 @@ struct FunctionInfo {
 struct Chunk {
     std::vector<Value> constants;
     std::vector<Instruction> code;
+    std::vector<std::uint32_t> lines;
     std::vector<FunctionInfo> functions;
 };
 
@@ -99,6 +100,7 @@ private:
     std::unordered_map<std::string, std::size_t> function_indices_;
     std::vector<LoopContext> loops_;
     int handler_depth_ = 0;
+    std::uint32_t current_line_ = 0;
     std::vector<Diagnostic> errors_;
 };
 
@@ -129,12 +131,13 @@ private:
     std::vector<Frame> frames_;
     std::vector<Handler> handlers_;
     std::size_t base_ = 0;
+    std::uint32_t current_line_ = 0;
     std::unordered_map<std::string, Value> variables_;
     std::vector<Diagnostic> errors_;
 };
 
 inline constexpr char kBytecodeMagic[4] = {'K', 'I', 'T', 'E'};
-inline constexpr std::uint32_t kBytecodeFormatVersion = 13;
+inline constexpr std::uint32_t kBytecodeFormatVersion = 14;
 
 bool validate_chunk(const Chunk& chunk, std::string& error);
 bool save_bytecode(const Chunk& chunk, const std::string& path, std::string& error);
